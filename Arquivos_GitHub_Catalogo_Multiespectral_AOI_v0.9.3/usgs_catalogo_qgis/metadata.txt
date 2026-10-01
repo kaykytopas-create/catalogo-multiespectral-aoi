@@ -1,0 +1,28 @@
+[general]
+name=Catálogo Multiespectral por Área de Interesse
+description=Search Landsat and Sentinel-2 by area, preview parcel boundaries, build RGB composites and NDVI, and cache imagery offline.
+version=0.9.3
+qgisMinimumVersion=3.22
+qgisMaximumVersion=3.99
+author=Kayky Pessoa de Araujo
+email=kaykytopas@gmail.com
+homepage=https://github.com/kaykytopas-create/catalogo-multiespectral-aoi#readme
+repository=https://github.com/kaykytopas-create/catalogo-multiespectral-aoi
+tracker=https://github.com/kaykytopas-create/catalogo-multiespectral-aoi/issues
+license=GPL-2.0-or-later
+about=Anonymous Landsat Collection 2 Level-2 and Sentinel-2 Level-2A search by polygon area, scene cloud cover below 20 percent, georeferenced preview, selectable RGB bands, NDVI and a local offline archive. QGIS 3.22-3.99 with GDAL Python and NumPy is required; standard QGIS installations generally include these dependencies. New imagery requires internet and Microsoft Planetary Computer availability. Experimental release; runtime validation is still pending.
+	Desenvolvido em colaboração por Kayky Pessoa de Araujo e OpenAI Codex. Imagens Landsat: USGS/NASA; Sentinel-2: ESA/Copernicus. Catálogo e hospedagem: Microsoft Planetary Computer. Pesquisa cenas históricas, permite composições RGB distintas da mesma cena e calcula NDVI com as bandas NIR e vermelha. Permite conferir o limite do imóvel sobre a imagem antes de importar e manter um acervo local por área. Internet é necessária para novos downloads e atualizações; GDAL e NumPy são usados no processamento.
+tags=USGS,Landsat,Sentinel-2,satellite,imagery,raster,remote sensing,cloud cover,RGB,NDVI,PRODES,offline,STAC,area of interest
+category=Raster
+icon=icon.png
+experimental=True
+deprecated=False
+server=False
+hasProcessingProvider=False
+changelog=0.9.3: Scoped Qt and PyQGIS enums for Qt6, replaced exec_ with exec, and added a compatible QAction import.
+    0.9.2: QGIS native networking, HTTPS endpoint validation and security fixes.
+    0.9.0: Publication preparation, GPL-2.0-or-later license, English summary, documentation and release validation.
+	0.8.0: Wider landscape crops, optional RGB smoothing and highest-resolution composite grid.
+	0.7.0: INPE/PRODES presets by sensor, parallel band downloads and cached preview contrast.
+	0.6.0: Georeferenced preview with parcel boundary and an incremental offline archive.
+
