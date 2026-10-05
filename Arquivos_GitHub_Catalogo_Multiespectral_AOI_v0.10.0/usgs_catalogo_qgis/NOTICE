@@ -1,0 +1,22 @@
+Catálogo Multiespectral por Área de Interesse
+Copyright (C) 2026 Kayky Pessoa de Araujo
+SPDX-License-Identifier: GPL-2.0-or-later
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 2 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE.
+
+Author: Kayky Pessoa de Araujo.
+Development assistance: OpenAI Codex.
+Data credits: USGS/NASA (Landsat), ESA/Copernicus (Sentinel-2).
+Catalog, anonymous access and hosting: Microsoft Planetary Computer.
+INPE: reference for the main PRODES Amazon spectral composites.
+This is an independent project, not an official plugin of these institutions.
+
+No satellite imagery is bundled. The software license does not replace
+terms applicable to external imagery and services.

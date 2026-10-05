@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "name": "Imóvel sintético para testes — não representa cadastro real",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "nome": "Área fictícia de teste",
+        "uso": "synthetic test geometry; not a surveyed property"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -49.18,
+              -5.41
+            ],
+            [
+              -49.17,
+              -5.41
+            ],
+            [
+              -49.17,
+              -5.4
+            ],
+            [
+              -49.18,
+              -5.4
+            ],
+            [
+              -49.18,
+              -5.41
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
