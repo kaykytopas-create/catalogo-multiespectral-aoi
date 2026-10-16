@@ -27,9 +27,7 @@ LAND_LAYERS = {
     'snci':(97,'Parcelas SNCI — base ITERPA (PA)','objectid_1','nmimovel,numprocess,numcertif,datacerti,codimovel,orgaogest,datamodif'),
     'requerimento':(93,'Requerimentos fundiários SICARF — ITERPA (PA)','objectid','imovel,ano,processo,parcela,situacao,municipio,data'),
 }
-# Public application key published by DPJ/CNJ, not a user credential. It may rotate.
-# Source verified 2026-10-16: https://datajud-wiki.cnj.jus.br/api-publica/acesso/
-PUBLIC_DATAJUD_KEY = 'cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=='
+DATAJUD_ACCESS = 'https://datajud-wiki.cnj.jus.br/api-publica/acesso/'
 UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SE SP TO'.split()
 STATUSES = {'found':'Registros encontrados', 'clear_in_source':'Sem registro no recorte consultado',
             'partial':'Consulta parcial', 'unavailable':'Fonte indisponível', 'pending':'Pendente de consulta',
@@ -250,7 +248,17 @@ class EnvironmentalClient:
         numbers = context.get('judicial_numbers',[])
         if not numbers:
             return result('datajud','pending','Sem números CNJ informados. A consulta integrada não descobre todos os processos por nome, CPF, CAR ou polígono.')
-        key = context.get('datajud_key') or PUBLIC_DATAJUD_KEY
+        key = context.get('datajud_key','').strip()
+        if not key:
+            try:
+                raw = self.fetch(DATAJUD_ACCESS,None,None)
+                page = Page(raw.decode('utf-8'))
+                match = re.search(r'APIKey\s+([A-Za-z0-9+/=_-]{24,})',page.text(page.root))
+                if not match:
+                    raise ConsultationError('A página oficial não informou a chave no formato esperado.')
+                key = match.group(1)
+            except (ConsultationError, UnicodeError) as exc:
+                return result('datajud','pending','Não foi possível obter a chave pública no portal CNJ. Copie a chave vigente da documentação oficial para o campo DataJud e repita a consulta.',warnings=[str(exc)])
         if not re.fullmatch(r'[A-Za-z0-9+/=_-]+',key):
             return result('datajud','pending','Chave pública DataJud inválida; confira a documentação CNJ.')
         records, warnings, evidence = [], [], []
@@ -391,7 +399,7 @@ def run_assessment(context, progress=lambda source,status:None, cancelled=lambda
                     pending[pool.submit(tasks['ldi'])]='ldi'
     sources['other_processes']=result('other_processes','pending',
         'A busca não cobre todos os processos administrativos, judiciais, municipais, SEI, SIMLAM, recursos ou registros sem geometria. Os processos identificados são os vinculados nos dados consultados e os números CNJ informados; confira os portais dos órgãos.')
-    report=dict(version='3.5.0',generated_at=now(),elapsed_seconds=round(clock()-start,2),time_budget_seconds=min(300,seconds),
+    report=dict(version='3.5.1',generated_at=now(),elapsed_seconds=round(clock()-start,2),time_budget_seconds=min(300,seconds),
         state='cancelled' if cancelled() else 'time_limit' if not budget.remaining() else 'finished',
         property={'name':str(context.get('name','Imóvel')),'uf':context['uf'],'car':display_car(context['car']),
                   'bbox':context['rect'],'geometry_wkt':context['wkt'],'crs':'EPSG:4326','geometry_sha256':hashlib.sha256(context['wkt'].encode()).hexdigest(),

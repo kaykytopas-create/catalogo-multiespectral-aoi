@@ -44,7 +44,7 @@ class EnvironmentalTab(QWidget):
         layout.addLayout(form)
         detail=QGroupBox('Consulta judicial por número CNJ (opcional)');details=QFormLayout(detail)
         self.numbers=QLineEdit();self.numbers.setPlaceholderText('Números CNJ separados por ponto e vírgula; máximo 20');details.addRow('Processos conhecidos',self.numbers)
-        self.key=QLineEdit();self.key.setPlaceholderText('Deixe vazio para usar a chave pública CNJ incluída; substitua se ela for alterada');details.addRow('Chave pública DataJud',self.key)
+        self.key=QLineEdit();self.key.setPlaceholderText('Busca automática na documentação CNJ; informe a chave pública se o portal não responder');details.addRow('Chave pública DataJud',self.key)
         note=QLabel('O DataJud consulta os números informados; não localiza todos os processos por polígono, nome ou CPF. Fundiário online: recorte Pará do ITERPA, incluindo camadas federais. <a href="https://datajud-wiki.cnj.jus.br/api-publica/acesso/">Acesso e condições CNJ</a>.');note.setWordWrap(True);note.setOpenExternalLinks(True);details.addRow(note);layout.addWidget(detail)
         row=QHBoxLayout();self.run=QPushButton('Consultar e gerar relatório · até 5 min');self.stop=QPushButton('Cancelar e preservar resultados');self.stop.setEnabled(False)
         row.addWidget(self.run);row.addWidget(self.stop);layout.addLayout(row)

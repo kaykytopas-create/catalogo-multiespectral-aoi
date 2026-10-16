@@ -175,7 +175,7 @@ class CatalogDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Catálogo Multiespectral 3.5 | Imagens · PRODES · Consulta ambiental e fundiária")
+        self.setWindowTitle("Catálogo Multiespectral 3.5.1 | Imagens · PRODES · Consulta ambiental e fundiária")
         self.resize(1180, 850)
         self.job, self.next_link, self.active_scene, self.search_params = None, None, None, None
         self.scenes = []
@@ -470,7 +470,9 @@ class CatalogDialog(QDialog):
             if product=='rgb':
                 from .prodes_auto import scene_metadata
                 try:layer.setCustomProperty('catalogo_multiespectral_espectral',json.dumps(scene_metadata(item,record['bands'],context['archive'].scene_folder(item))))
-                except Exception:pass
+                except Exception as exc:
+                    logging.getLogger(__name__).warning('Metadados espectrais não registrados: %s', exc)
+                    outcome.setdefault('warnings', []).append('Metadados espectrais não registrados: '+str(exc))
             root=project.layerTreeRoot()
             group_name='Comando · '+context['preset'].upper()+' · '+context['archive'].area_id[:8]
             group=root.findGroup(group_name) or root.insertGroup(0,group_name)
@@ -481,7 +483,9 @@ class CatalogDialog(QDialog):
                 transform=QgsCoordinateTransform(QgsCoordinateReferenceSystem('EPSG:4326'),canvas.mapSettings().destinationCrs(),project)
                 canvas.setExtent(transform.transformBoundingBox(QgsGeometry.fromWkt(context['geometry']).boundingBox()))
                 canvas.refresh()
-            except Exception:pass
+            except Exception as exc:
+                logging.getLogger(__name__).warning('Camada importada; enquadramento do mapa não atualizado: %s', exc)
+                outcome.setdefault('warnings', []).append('Enquadramento do mapa não atualizado: '+str(exc))
             self.info.setText('Importada no QGIS: '+record['date']+' · '+record['scene_id'])
         except Exception as exc:
             outcome.update(status='failed',error=str(exc))

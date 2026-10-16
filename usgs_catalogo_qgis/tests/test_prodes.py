@@ -33,10 +33,7 @@ class ProdesTests(unittest.TestCase):
         try:
             from qgis.PyQt.QtCore import QXmlStreamReader
         except ImportError:
-            try:
-                from PyQt5.QtCore import QXmlStreamReader
-            except ImportError:
-                self.skipTest("Qt XML requerido para teste de GetCapabilities")
+            self.skipTest("Qt XML do QGIS requerido para teste de GetCapabilities")
         xml = b'<w:WFS_Capabilities xmlns:w="urn:wfs"><w:FeatureType><w:Name>prodes-amz:yearly</w:Name><w:Title>PRODES annual</w:Title></w:FeatureType><w:FeatureType><w:Name>deter:alerts</w:Name></w:FeatureType></w:WFS_Capabilities>'
         self.assertEqual(capabilities(xml, QXmlStreamReader), [("prodes-amz:yearly", "PRODES annual")])
         with self.assertRaises(ProdesError):

@@ -13,7 +13,7 @@ from usgs_catalogo_qgis.environmental_report import render_html,save_report,land
 CODE='PA-1502152-'+'A'*32
 RECT=[-50,-7,-49,-6]
 WKT='POLYGON((-50 -7,-49 -7,-49 -6,-50 -6,-50 -7))'
-CONTEXT={'wkt':WKT,'rect':RECT,'uf':'PA','name':'Imóvel teste','car':CODE}
+CONTEXT={'wkt':WKT,'rect':RECT,'uf':'PA','name':'Imóvel teste','car':CODE,'datajud_key':'fixture'}
 
 def feature(i,inside=True,props=None):
     return {'type':'Feature','id':str(i),'geometry':{'inside':inside},'properties':props or {}}
@@ -163,7 +163,7 @@ class EnvironmentalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             paths=save_report(report,folder)
             self.assertTrue(all(Path(p).exists() for p in paths.values()));self.assertIn("'=1+2",Path(paths['csv']).read_text('utf-8-sig'))
-            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.0');self.assertFalse(list(Path(folder).glob('*.part')))
+            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.1');self.assertFalse(list(Path(folder).glob('*.part')))
 
 try:
     from qgis.core import QgsApplication
@@ -278,3 +278,21 @@ class EnvironmentalRetryTests(unittest.TestCase):
         with self.assertRaises(BudgetExpired):http('https://arcgisportal.iterpa.pa.gov.br/server/rest/services/SICARF/acervoFundiarioMapserver/MapServer/72/query')
         self.assertLess(time.monotonic()-start,.5)
         http.land_slots.release();http.land_slots.release()
+
+class DatajudAccessTests(unittest.TestCase):
+    def test_current_public_key_is_read_from_official_page_without_bundled_value(self):
+        from usgs_catalogo_qgis.environmental import DATAJUD_ACCESS
+        issued=''.join(['public','fixture','datajud','credential','value'])
+        calls=[]
+        def fetch(url,payload=None,headers=None):
+            calls.append((url,headers))
+            if url==DATAJUD_ACCESS:return ('<html><pre>Authorization: APIKey '+issued+'</pre></html>').encode()
+            return json.dumps({'hits':{'total':{'value':0,'relation':'eq'},'hits':[]}}).encode()
+        value=EnvironmentalClient(Budget(),fetch,overlay).judicial({**CONTEXT,'datajud_key':'','judicial_numbers':['00008323520184013202']})
+        self.assertEqual(value['status'],'clear_in_source')
+        self.assertEqual(calls[0],(DATAJUD_ACCESS,None));self.assertEqual(calls[1][1],{'Authorization':'APIKey '+issued})
+        self.assertNotIn(issued,json.dumps(value));self.assertTrue(allowed_url(DATAJUD_ACCESS))
+    def test_blocked_key_page_is_pending_and_does_not_claim_no_process(self):
+        def fetch(*a):raise ConsultationError('HTTP 403')
+        value=EnvironmentalClient(Budget(),fetch,overlay).judicial({**CONTEXT,'datajud_key':'','judicial_numbers':['00008323520184013202']})
+        self.assertEqual(value['status'],'pending');self.assertFalse(value['complete']);self.assertIn('campo DataJud',value['note'])

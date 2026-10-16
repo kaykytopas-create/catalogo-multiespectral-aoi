@@ -1,3 +1,7 @@
+# Correção 3.5.1 — validação para publicação
+
+Corrigidos os quatro apontamentos de compatibilidade Qt/QGIS, os dois alertas de exceções silenciosas e a chave pública DataJud embutida. A consulta judicial obtém a chave no portal oficial CNJ ou usa o valor informado na sessão, sem persistência. 205 testes passaram no QGIS 3.34.4; Bandit e detect-secrets sem apontamentos na verificação local. Leia [VALIDACAO_3.5.1.md](VALIDACAO_3.5.1.md). Reenvie o ZIP 3.5.1 ao verificador do repositório.
+
 # Catálogo Multiespectral AOI 3.5 — consulta ambiental e fundiária
 
 Nova aba separada para situação do CAR, embargos, processos associados, consulta judicial por número CNJ e registros fundiários do acervo ITERPA para o Pará. Consultas em paralelo com orçamento de cinco minutos, relatório HTML, evidências JSON/CSV e exportação PDF. Leia [GUIA_3.5.md](GUIA_3.5.md), [VALIDACAO_3.5.md](VALIDACAO_3.5.md) e [PUBLICACAO.md](PUBLICACAO.md). Versão experimental: não certifica domínio, regularidade ou ausência de todos os processos públicos.

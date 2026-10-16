@@ -40,6 +40,7 @@ class Budget:
 
 
 PATHS = {
+    'datajud-wiki.cnj.jus.br': ('/api-publica/acesso/',),
     'geoserver.car.gov.br': ('/geoserver/sicar/wfs',),
     'geoservicos.inde.gov.br': ('/geoserver/ICMBio/ows',),
     'pamgia.ibama.gov.br': ('/server/rest/services/01_Publicacoes_Bases/adm_embargos_ibama_a/MapServer/0/query',),
