@@ -6,20 +6,19 @@ The Landsat collection contains USGS Collection 2 Level-2 imagery. Microsoft's
 read-only SAS signing service is public and requires no account from the user.
 """
 import json
+import logging
 import hashlib
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import os
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 STAC_URL = "https://planetarycomputer.microsoft.com/api/stac/v1/search"
 SIGN_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/sign"
-TOKEN_URL = "https://planetarycomputer.microsoft.com/api/sas/v1/token/"
+SAS_ENDPOINT = "https://planetarycomputer.microsoft.com/api/sas/v1/token/"
 COLLECTIONS = {
     "landsat-c2-l2": "Landsat 4–9 | USGS Collection 2, nível 2",
     "sentinel-2-l2a": "Sentinel-2 | nível 2A",
@@ -110,20 +109,99 @@ def ndvi_keys(item):
     return keys if all(key in available for key in keys) else ()
 
 
+
+PRESETS = (
+    ("prodes", "PRODES — INPE", ("swir16", "nir08", "red")),
+    ("natural", "Cor natural", ("red", "green", "blue")),
+    ("infrared", "Infravermelho — vegetação", ("nir08", "red", "green")),
+    ("vegetation", "Análise de vegetação", ("swir16", "nir08", "red")),
+    ("swir", "Infravermelho de ondas curtas", ("swir22", "nir08", "red")),
+    ("agriculture", "Agricultura", ("swir22", "swir16", "blue")),
+    ("water", "Terra / água", ("nir08", "swir16", "red")),
+)
+
+
+def preset_keys(item, preset):
+    semantic = next((keys for identifier, label, keys in PRESETS if identifier == preset), ())
+    sentinel = {"red": "B04", "green": "B03", "blue": "B02", "nir08": "B08",
+                "swir16": "B11", "swir22": "B12"}
+    keys = tuple(sentinel[key] for key in semantic) if item.get("collection") == "sentinel-2-l2a" else semantic
+    available = {key for key, _ in available_bands(item)}
+    return keys if keys and all(key in available for key in keys) else ()
+
+
+def index_keys(item, product):
+    if product == "ndvi":
+        return ndvi_keys(item)
+    if product != "nbr":
+        return ()
+    keys = ("B08", "B12") if item.get("collection") == "sentinel-2-l2a" else ("nir08", "swir22")
+    available = {key for key, _ in available_bands(item)}
+    return keys if all(key in available for key in keys) else ()
+
+
+def slc_gap_scene(item):
+    props = item.get("properties", {})
+    landsat7 = props.get("platform") == "landsat-7" or str(item.get("id", "")).startswith("LE07")
+    return landsat7 and str(props.get("datetime", ""))[:10] >= "2003-05-31"
+
+
+def validate_raster(path, gdal, cancelled=lambda: False):
+    """Read every raster block so truncated tiles cannot be accepted as cached data."""
+    dataset = gdal.Open(path)
+    if dataset is None or dataset.RasterXSize <= 0 or dataset.RasterYSize <= 0:
+        raise CatalogError("Raster vazio ou ilegível; baixe novamente a banda.")
+    for index in range(1, dataset.RasterCount + 1):
+        band = dataset.GetRasterBand(index)
+        width, height = band.GetBlockSize()
+        for y in range(0, dataset.RasterYSize, max(1, height)):
+            for x in range(0, dataset.RasterXSize, max(1, width)):
+                if cancelled():
+                    raise CatalogError("Operação cancelada.")
+                data = band.ReadRaster(x, y, min(max(1, width), dataset.RasterXSize-x),
+                                       min(max(1, height), dataset.RasterYSize-y))
+                if not data:
+                    raise CatalogError("Bloco raster incompleto; baixe novamente a banda.")
+    dataset = None
+
+
+def validate_cached_raster(path, gdal, cancelled=lambda: False):
+    stat = os.stat(path)
+    identity = [stat.st_size, stat.st_mtime_ns]
+    receipt = path + ".validated.json"
+    try:
+        with open(receipt, encoding="utf-8") as stream:
+            if json.load(stream) == identity:
+                return
+    except (OSError, ValueError):
+        logging.getLogger(__name__).debug("Raster será validado integralmente antes de reutilização.")
+    validate_raster(path, gdal, cancelled)
+    partial = receipt + ".part"
+    with open(partial, "w", encoding="utf-8") as stream:
+        json.dump(identity, stream)
+    os.replace(partial, receipt)
+
 def reflectance_coefficients(item, key):
     """Apply the product's radiometric scaling before computing an index."""
     if item.get("collection") == "landsat-c2-l2":
         return 0.0000275, -0.2
     asset = item.get("assets", {}).get(key, {})
     metadata = (asset.get("raster:bands") or [{}])[0]
+    if item.get("collection") == "sentinel-2-l2a" and not metadata:
+        # Planetary Computer raw Sentinel DNs retain the ESA baseline offset.
+        # Use the processing baseline, never the acquisition date.
+        baseline = item.get("properties", {}).get("s2:processing_baseline")
+        if baseline is None:
+            raise CatalogError("Baseline radiométrica Sentinel ausente nos metadados.")
+        return 0.0001, -0.1 if float(baseline) >= 4.0 else 0.0
     return float(metadata.get("scale", 0.0001)), float(metadata.get("offset", 0))
 
 
-def write_ndvi(item, files_by_key, destination, gdal, cancelled=lambda: False):
+def write_index(item, files_by_key, destination, gdal, product="ndvi", cancelled=lambda: False):
     """Calculate reflectance NDVI in row blocks, preserving NoData as -9999."""
     import numpy as np
 
-    nir_key, red_key = ndvi_keys(item)
+    nir_key, red_key = index_keys(item, product)
     red = gdal.Open(files_by_key[red_key])
     nir = gdal.Open(files_by_key[nir_key])
     if red is None or nir is None:
@@ -180,6 +258,10 @@ def write_ndvi(item, files_by_key, destination, gdal, cancelled=lambda: False):
     return destination
 
 
+
+def write_ndvi(item, files_by_key, destination, gdal, cancelled=lambda: False):
+    return write_index(item, files_by_key, destination, gdal, "ndvi", cancelled)
+
 def search_payload(collections, rect, start, end, cloud=MAX_CLOUD):
     if not collections or not set(collections).issubset(COLLECTIONS):
         raise CatalogError("Selecione uma coleção disponível.")
@@ -198,7 +280,7 @@ def visible_scenes(items, cloud=MAX_CLOUD):
             if cover is not None and float(cover) < cloud:
                 result.append(item)
         except (ValueError, TypeError):
-            pass
+            logging.getLogger(__name__).warning("Cena ignorada: metadado de nuvens inválido.")
     return result
 
 
@@ -229,6 +311,13 @@ def safe_name(scene_id, key, href):
 
 
 def preview_url(item, size=180):
+    if 'INPE/Brazil Data Cube' in item.get('catalog:sources',[]):
+        name='thumb_large.jpeg' if size>180 else 'thumb_small.jpeg'
+        thumbnail=item.get('assets',{}).get(name,{}).get('href','')
+        p=urllib.parse.urlparse(thumbnail)
+        try:
+            if p.scheme=='https' and p.hostname=='data.inpe.br' and p.port in (None,443) and not p.username and not p.password and p.path.startswith('/bdc/data/landsat/v2/'):return thumbnail
+        except ValueError:pass
     asset = item.get("assets", {}).get("rendered_preview", {})
     url = asset.get("href", "")
     parsed = urllib.parse.urlparse(url)
@@ -252,14 +341,39 @@ class PublicCatalog:
                    "User-Agent": "QGIS-Public-Satellite-Catalog/0.9"}
         if payload is not None:
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(url,
-                    data=json.dumps(payload).encode("utf-8") if payload is not None else None,
-                    headers=headers, method="POST" if payload is not None else "GET")
+        parsed = urllib.parse.urlparse(url)
         try:
-            with urllib.request.urlopen(request, timeout=90) as response:
-                return json.load(response)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            raise CatalogError("Falha ao consultar o catálogo público: " + str(exc)) from exc
+            allowed = (parsed.scheme == "https" and parsed.hostname == "planetarycomputer.microsoft.com"
+                       and parsed.port in (None, 443) and not parsed.username and not parsed.password
+                       and parsed.path.startswith(("/api/stac/v1/", "/api/sas/v1/")))
+            allowed = allowed or (parsed.scheme == "https" and parsed.hostname == "data.inpe.br" and parsed.port in (None, 443) and not parsed.username and not parsed.password and parsed.path.startswith("/bdc/stac/v1/"))
+        except ValueError as exc:
+            raise CatalogError("Endereço inválido do catálogo público.") from exc
+        if not allowed:
+            raise CatalogError("A consulta exige HTTPS no servidor autorizado do catálogo.")
+        from qgis.core import QgsNetworkAccessManager
+        from qgis.PyQt.QtCore import QUrl, QByteArray
+        from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
+        request = QNetworkRequest(QUrl(url))
+        request.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute, QNetworkRequest.RedirectPolicy.ManualRedirectPolicy)
+        for key, value in headers.items():
+            request.setRawHeader(key.encode("ascii"), value.encode("ascii"))
+        try:
+            if payload is None:
+                response = QgsNetworkAccessManager.blockingGet(request, forceRefresh=True)
+            else:
+                response = QgsNetworkAccessManager.blockingPost(
+                    request, QByteArray(json.dumps(payload).encode("utf-8")), forceRefresh=True)
+            if self.cancelled():
+                raise CatalogError("Operação cancelada.")
+            if response.error() != QNetworkReply.NetworkError.NoError:
+                raise CatalogError("Falha de rede ao consultar o catálogo público (código {}).".format(int(response.error())))
+            status = response.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+            if status is None or not 200 <= int(status) < 300:
+                raise CatalogError("O catálogo respondeu com status HTTP {}.".format(status))
+            return json.loads(bytes(response.content()).decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CatalogError("Resposta inválida do catálogo público.") from exc
 
     def search(self, collections, rect, start, end, next_link=None):
         if next_link:
@@ -292,6 +406,12 @@ class PublicCatalog:
     def _signed_url(self, href):
         parsed = urllib.parse.urlparse(href)
         host = parsed.hostname or ""
+        if host == 'data.inpe.br':
+            try:
+                if parsed.scheme=='https' and parsed.port in (None,443) and not parsed.username and not parsed.password and parsed.path.startswith('/bdc/data/landsat/v2/') and not parsed.query:
+                    return href
+            except ValueError:pass
+            raise CatalogError('Endereço raster INPE inválido.')
         if parsed.scheme != "https" or not host.endswith(".blob.core.windows.net"):
             raise CatalogError("O servidor não forneceu endereço raster válido.")
         container = parsed.path.strip("/").split("/", 1)[0]
@@ -308,7 +428,7 @@ class PublicCatalog:
                 except (ValueError, TypeError):
                     self._tokens.pop(key, None)
         if key not in self._tokens:
-            data = self.json_request(TOKEN_URL + account + "/" + container)
+            data = self.json_request(SAS_ENDPOINT + account + "/" + container)
             token = data.get("token", "")
             if not token or "sig=" not in token:
                 raise CatalogError("Não foi possível autorizar o acesso público à banda.")
@@ -316,34 +436,13 @@ class PublicCatalog:
         separator = "&" if parsed.query else "?"
         return href + separator + self._tokens[key]
 
-    def download(self, url, destination, progress):
-        request = urllib.request.Request(url, headers={"User-Agent": "QGIS-Public-Satellite-Catalog/0.9"})
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response, open(destination, "wb") as output:
-                size = int(response.headers.get("Content-Length", 0))
-                received = 0
-                while True:
-                    if self.cancelled():
-                        raise CatalogError("Operação cancelada.")
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-                    received += len(chunk)
-                    if received % (10 * 1048576) < len(chunk):
-                        progress("Baixados {:.0f} MB{}".format(
-                            received / 1048576,
-                            " de {:.0f} MB".format(size / 1048576) if size else ""))
-        except (urllib.error.URLError, OSError) as exc:
-            raise CatalogError("Falha no download: " + str(exc)) from exc
-
     @staticmethod
     def cached_band_path(item, folder, key, href):
         return os.path.join(folder, safe_name(item.get("id", "cena"), key, href).rsplit(".", 1)[0] + ".tif")
 
-    def cache_bands(self, item, folder, rect, target_crs, progress, keys, offline=False):
+    def cache_bands(self, item, folder, rect, target_crs, progress, keys, offline=False, force_download=False, include_auxiliary=False):
         selected = set(keys)
-        assets = [(key, href) for key, href in raster_assets(item) if key in selected]
+        assets = [(key, href) for key, href in raster_assets(item, include_auxiliary) if key in selected]
         if not selected or not selected.issubset({key for key, _ in assets}):
             raise CatalogError("Uma das bandas selecionadas não está disponível na cena.")
         os.makedirs(folder, exist_ok=True)
@@ -355,7 +454,8 @@ class PublicCatalog:
         config = {"GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
                   "GDAL_HTTP_MULTIRANGE": "YES", "GDAL_HTTP_MULTIPLEX": "YES",
                   "GDAL_HTTP_VERSION": "2TLS", "GDAL_HTTP_CONNECTTIMEOUT": "15",
-                  "GDAL_HTTP_TIMEOUT": "60"}
+                  "GDAL_HTTP_TIMEOUT": "60", "GDAL_HTTP_MAX_RETRY": "3",
+                  "GDAL_HTTP_RETRY_DELAY": "1"}
         thread_config = getattr(gdal, "SetThreadLocalConfigOption", None)
         set_config = thread_config or gdal.SetConfigOption
         get_config = getattr(gdal, "GetThreadLocalConfigOption", None) if thread_config else None
@@ -372,34 +472,57 @@ class PublicCatalog:
             target = self.cached_band_path(item, folder, key, href)
             partial = target + ".part.tif"
             try:
-                if os.path.isfile(target) and os.path.getsize(target) > 0:
+                if not force_download and os.path.isfile(target) and os.path.getsize(target) > 0:
                     try:
                         check = gdal.Open(target) if hasattr(gdal, "Open") else True
                         if check is not None:
                             check = None
+                            if hasattr(gdal, "Open"):
+                                validate_cached_raster(target, gdal, self.cancelled)
                             by_key[key] = target
                             progress("Reutilizando banda local {} ({}/{})".format(key, index, len(assets)))
                             return
                     except Exception:
-                        pass
+                        logging.getLogger(__name__).warning("Banda local inválida; será recuperada se houver rede.")
                 if offline:
                     errors.append("{}: banda não disponível no acervo local".format(key))
                     return
                 progress("Baixando recorte {} ({}/{})".format(key, index, len(assets)))
-                signed = self.signed_url(href)
-                options = gdal.WarpOptions(format="GTiff", outputBounds=context_bbox(rect),
-                    outputBoundsSRS="EPSG:4326", dstSRS=target_crs,
-                    resampleAlg="near", multithread=True, warpMemoryLimit=32,
-                    creationOptions=["TILED=YES"],
-                    callback=lambda fraction, message, user_data: 0 if self.cancelled() else 1)
-                result = gdal.Warp(partial, "/vsicurl/" + signed, options=options)
-                if result is None:
-                    raise CatalogError("GDAL não conseguiu abrir a banda remota.")
-                result = None
-                if self.cancelled():
-                    raise CatalogError("Operação cancelada.")
-                os.replace(partial, target)
-                by_key[key] = target
+                attempts=[]
+                urls=[href]+item.get('assets',{}).get(key,{}).get('catalog:alternate_hrefs',[])
+                for candidate in dict.fromkeys(urls):
+                    if self.cancelled():raise CatalogError('Operação cancelada.')
+                    try:
+                        signed = self.signed_url(candidate)
+                        options = gdal.WarpOptions(format="GTiff", outputBounds=context_bbox(rect),
+                            outputBoundsSRS="EPSG:4326", dstSRS=target_crs,
+                            resampleAlg="near", multithread=True, warpMemoryLimit=32,
+                            errorThreshold=0, dstNodata=65535 if key == "qa_radsat" else 0,
+                            srcNodata="None" if key == "qa_radsat" else None,
+                            warpOptions=["INIT_DEST=NO_DATA"],
+                            creationOptions=["TILED=YES", "COMPRESS=DEFLATE", "PREDICTOR=2"],
+                            callback=lambda fraction, message, user_data: 0 if self.cancelled() else 1)
+                        result = gdal.Warp(partial, "/vsicurl/" + signed, options=options)
+                        if result is None:
+                            raise CatalogError("GDAL não conseguiu abrir a banda remota.")
+                        result = None
+                        if self.cancelled():
+                            raise CatalogError("Operação cancelada.")
+                        if hasattr(gdal, "Open"):
+                            validate_raster(partial, gdal, self.cancelled)
+                        os.replace(partial, target)
+                        if hasattr(gdal, "Open"):
+                            stat = os.stat(target)
+                            with open(target + ".validated.json", "w", encoding="utf-8") as stream:
+                                json.dump([stat.st_size, stat.st_mtime_ns], stream)
+                        by_key[key] = target
+                        item.setdefault('catalog:download_sources',{})[key]=urllib.parse.urlparse(candidate).hostname
+                        break
+                    except Exception as exc:
+                        attempts.append(str(exc))
+                        if os.path.exists(partial):os.remove(partial)
+                        progress('Tentando outra fonte pública para '+key+'…')
+                else:raise CatalogError('; '.join(attempts))
             except Exception as exc:
                 if self.cancelled():
                     raise CatalogError("Operação cancelada.") from exc
@@ -422,38 +545,59 @@ class PublicCatalog:
                     pass
         return by_key, errors
 
+    def assess_scene_quality(self, item, folder, rect, target_crs, progress, geometry_wkt, offline=False):
+        from .catalog_quality import inspect_qa
+        key = 'SCL' if item.get('collection') == 'sentinel-2-l2a' else 'qa_pixel'
+        paths, errors = self.cache_bands(item, folder, rect, target_crs, progress,
+            [key], offline, False, include_auxiliary=True)
+        if key not in paths:raise CatalogError('Não foi possível conferir QA no imóvel: '+ '; '.join(errors))
+        return inspect_qa(paths[key], 'sentinel' if key == 'SCL' else 'landsat', geometry_wkt)
+
     def download_scene(self, item, folder, rect, target_crs, progress, rgb_keys,
-                       product="rgb", offline=False):
-        if product == "ndvi":
-            rgb_keys = ndvi_keys(item)
+                       product="rgb", offline=False, force_download=False):
+        if product in ("ndvi", "nbr"):
+            rgb_keys = index_keys(item, product)
             if not rgb_keys:
-                raise CatalogError("Esta cena não contém as bandas NIR e vermelha necessárias ao NDVI.")
+                raise CatalogError("Esta cena não contém as bandas necessárias ao índice selecionado.")
         elif product != "rgb" or len(rgb_keys) != 3:
             raise CatalogError("Escolha as bandas vermelha, verde e azul da composição.")
         by_key, errors = self.cache_bands(item, folder, rect, target_crs, progress,
-                                         rgb_keys, offline)
+                                         rgb_keys, offline, force_download)
         if not all(key in by_key for key in rgb_keys):
             raise CatalogError("Não foi possível preparar as bandas: " + "; ".join(errors[:3]))
+        # Best-effort local quality masks for automatic temporal screening.
+        # Never add QA rasters as visible map layers or abort RGB on QA failure.
+        if product == "rgb":
+            auxiliary = dict(raster_assets(item, include_auxiliary=True))
+            qa_keys = [key for key in ("qa_pixel", "qa_radsat", "SCL") if key in auxiliary]
+            if qa_keys:
+                _, qa_errors = self.cache_bands(item, folder, rect, target_crs, progress,
+                    qa_keys, offline, force_download, include_auxiliary=True)
+                errors.extend(qa_errors)
         from osgeo import gdal
         files = list(by_key.values())
-        if product == "ndvi":
-            composite = os.path.join(folder, "NDVI.tif")
-            if not os.path.isfile(composite):
-                progress("Calculando NDVI a partir das reflectâncias…")
+        if product in ("ndvi", "nbr"):
+            # Calibration changes must invalidate older derived indices.
+            calibration = hashlib.sha256(json.dumps({"keys": list(rgb_keys),
+                "coefficients": [reflectance_coefficients(item, key) for key in rgb_keys],
+                "profile": 2}).encode()).hexdigest()[:12]
+            composite = os.path.join(folder, product.upper() + "_" + calibration + ".tif")
+            if not os.path.isfile(composite) or any(os.stat(path).st_mtime_ns > os.stat(composite).st_mtime_ns for path in files):
+                progress("Calculando {} a partir das reflectâncias…".format(product.upper()))
                 partial = composite + ".part.tif"
                 try:
-                    write_ndvi(item, by_key, partial, gdal, self.cancelled)
+                    write_index(item, by_key, partial, gdal, product, self.cancelled)
                     os.replace(partial, composite)
                 finally:
                     if os.path.exists(partial):
                         os.remove(partial)
             return files, errors, composite
-        fingerprint = hashlib.sha256(json.dumps({"bands": list(rgb_keys), "resolution": "highest"}).encode()).hexdigest()[:12]
+        fingerprint = hashlib.sha256(json.dumps({"bands": list(rgb_keys), "resolution": "highest", "nodata": 0, "profile": 2, "sources": [(key, os.stat(by_key[key]).st_size, os.stat(by_key[key]).st_mtime_ns) for key in rgb_keys]}).encode()).hexdigest()[:12]
         composite = os.path.join(folder, "RGB_" + fingerprint + ".vrt")
         if os.path.isfile(composite) and os.path.getsize(composite) > 0:
             return files, errors, composite
         result = gdal.BuildVRT(composite, [by_key[key] for key in rgb_keys],
-                               options=gdal.BuildVRTOptions(separate=True, resolution="highest", resampleAlg="nearest"))
+                               options=gdal.BuildVRTOptions(separate=True, resolution="highest", resampleAlg="nearest", VRTNodata=0))
         if result is None:
             raise CatalogError("Não foi possível montar a composição RGB.")
         result = None

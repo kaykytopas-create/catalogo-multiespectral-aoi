@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+import uuid
 import sys
 import types
 from unittest.mock import patch
@@ -108,17 +109,18 @@ class PublicCatalogTests(unittest.TestCase):
 
     def test_pagination_merges_search_filter(self):
         catalog = PublicCatalog()
+        cursor = uuid.uuid4().hex
         calls = []
         def fake_request(url, payload=None):
             calls.append((url, payload))
             return {"type": "FeatureCollection", "features": [], "links": []}
         catalog.json_request = fake_request
         link = {"href": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
-                "rel": "next", "method": "POST", "merge": True, "body": {"token": "next"}}
+                "rel": "next", "method": "POST", "merge": True, "body": {"token": cursor}}
         catalog.search(["landsat-c2-l2"], (-50, -7, -49, -6),
                        "2022-01-01", "2022-12-31", next_link=link)
         self.assertEqual(calls[0][1]["query"]["eo:cloud_cover"]["lt"], 20)
-        self.assertEqual(calls[0][1]["token"], "next")
+        self.assertEqual(calls[0][1]["token"], cursor)
 
     def test_preview_link(self):
         item = {"assets": {"rendered_preview": {"href":
@@ -127,15 +129,16 @@ class PublicCatalogTests(unittest.TestCase):
 
     def test_anonymous_token_reused(self):
         catalog = PublicCatalog()
+        signature = "sig=" + uuid.uuid4().hex
         calls = []
         def fake_json(url, payload=None):
             calls.append(url)
-            return {"token": "sig=abc"}
+            return {"token": signature}
         catalog.json_request = fake_json
         a = "https://landsateuwest.blob.core.windows.net/landsat-c2/band1.tif"
         b = "https://landsateuwest.blob.core.windows.net/landsat-c2/band2.tif"
-        self.assertTrue(catalog.signed_url(a).endswith("?sig=abc"))
-        self.assertTrue(catalog.signed_url(b).endswith("?sig=abc"))
+        self.assertTrue(catalog.signed_url(a).endswith("?" + signature))
+        self.assertTrue(catalog.signed_url(b).endswith("?" + signature))
         self.assertEqual(len(calls), 1)
 
     def test_cropped_bands_without_full_scene_download(self):

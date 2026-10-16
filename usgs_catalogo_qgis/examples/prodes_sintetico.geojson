@@ -1,0 +1,42 @@
+{
+  "type": "FeatureCollection",
+  "name": "PRODES sintético — não é dado INPE",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "uuid": "EXEMPLO-SINTETICO-NAO-OFICIAL",
+        "class_name": "d2022",
+        "image_date": "2022-07-01",
+        "fonte": "Geometria fictícia para testar recorte; não representa PRODES oficial"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -49.182,
+              -5.408
+            ],
+            [
+              -49.175,
+              -5.408
+            ],
+            [
+              -49.175,
+              -5.403
+            ],
+            [
+              -49.182,
+              -5.403
+            ],
+            [
+              -49.182,
+              -5.408
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

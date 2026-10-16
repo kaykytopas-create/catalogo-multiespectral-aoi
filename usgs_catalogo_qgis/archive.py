@@ -60,6 +60,9 @@ class LocalArchive:
 
     def remember(self, item, errors=None):
         index = self.read()
+        from .public_sources import merge_scenes
+        previous=index["scenes"].get(self.scene_key(item),{}).get("item")
+        if previous:item=merge_scenes([previous,item])[0]
         index["scenes"][self.scene_key(item)] = {
             "item": item, "updated": datetime.now(timezone.utc).isoformat(),
             "errors": list(errors or [])}
@@ -70,6 +73,9 @@ class LocalArchive:
         for item in items:
             key = self.scene_key(item)
             previous = index["scenes"].get(key, {})
+            if previous.get("item"):
+                from .public_sources import merge_scenes
+                item=merge_scenes([previous["item"],item])[0]
             index["scenes"][key] = {**previous, "item": item}
         self.write(index)
 
@@ -101,17 +107,15 @@ class LocalArchive:
 
     def sync(self, client, collections, start, end, progress):
         """Re-query every page, downloading only missing spectral bands."""
-        items, seen, visited_links, link = [], set(), set(), None
+        items, visited_links, link, warnings = [], set(), None, []
         while True:
             if client.cancelled():
                 raise CatalogError("Operação cancelada; bandas já concluídas foram mantidas.")
             progress("Consultando todas as páginas do período… {} cenas".format(len(items)))
             page, next_link = client.search(collections, self.rect, start, end, link)
-            for item in page:
-                key = self.scene_key(item)
-                if key not in seen:
-                    seen.add(key)
-                    items.append(item)
+            from .public_sources import merge_scenes
+            items = merge_scenes(items + list(page))
+            warnings.extend(getattr(page, 'warnings', []))
             if not next_link:
                 break
             signature = digest(next_link)
@@ -142,4 +146,4 @@ class LocalArchive:
         index = self.read()
         index["last_sync"] = datetime.now(timezone.utc).isoformat()
         self.write(index)
-        return {"items": items, "completed": completed, "errors": failed}
+        return {"items": items, "completed": completed, "errors": failed + list(dict.fromkeys(warnings))}

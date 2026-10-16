@@ -1,4 +1,38 @@
-# Catálogo Multiespectral por Área de Interesse — QGIS 0.9.0
+# Catálogo Multiespectral AOI 3.5 — consulta ambiental e fundiária
+
+Nova aba separada para situação do CAR, embargos, processos associados, consulta judicial por número CNJ e registros fundiários do acervo ITERPA para o Pará. Consultas em paralelo com orçamento de cinco minutos, relatório HTML, evidências JSON/CSV e exportação PDF. Leia [GUIA_3.5.md](GUIA_3.5.md), [VALIDACAO_3.5.md](VALIDACAO_3.5.md) e [PUBLICACAO.md](PUBLICACAO.md). Versão experimental: não certifica domínio, regularidade ou ausência de todos os processos públicos.
+
+**English:** A separate public environmental and land-tenure screening tab complements the imagery catalog. SICAR, IBAMA, ICMBio, SEMAS/PA and exact-number CNJ/DataJud queries are bounded by a five-minute consultation budget. ITERPA land layers cover Para only. Read-only requests, traceable partial results, brief reports and PDF export; no general legal or ownership clearance.
+
+# Catálogo Multiespectral AOI 3.4 — USGS e INPE/Brazil Data Cube
+
+Nova fonte pública Landsat Collection 2 Level-2, sem conta, integrada ao catálogo manual, aos comandos de download e à aquisição da investigação PRODES. Unifica espelhos do mesmo produto, tenta outra hospedagem quando uma banda falha e preserva origem e avisos de consulta parcial. Leia [GUIA_3.4.md](GUIA_3.4.md) e [VALIDACAO_3.4.md](VALIDACAO_3.4.md). Versão experimental; disponibilidade anual e resolução continuam limitadas pelos dados existentes.
+
+# Catálogo Multiespectral AOI 3.3 — qualidade e alternativas anuais
+
+Cor natural com contraste radiométrico comum, seleção automática com QA no imóvel e tentativas de datas alternativas do mesmo ano. Argumentação por UUID para revisão temporal, temática e espacial e ferramenta de avaliação da meta de acurácia. Leia [GUIA_3.3.md](GUIA_3.3.md) e [VALIDACAO_3.3.md](VALIDACAO_3.3.md). Não promete imagens ausentes na fonte nem relaxa critérios. Preparada localmente; versão experimental.
+
+# Catálogo Multiespectral AOI 3.2 — execução por comandos
+
+O comando agora inicia a aquisição e pode adicionar cada raster concluído ao QGIS ou salvar somente no acervo, respeitando período, composição e filtro de nuvens. Use **Executar comando**. Leia [GUIA_3.2.md](GUIA_3.2.md) e [VALIDACAO_3.2.md](VALIDACAO_3.2.md). Versão experimental, preparada localmente; não publicada por esta atualização.
+
+# Catálogo Multiespectral AOI 3.1 — imagens e investigação PRODES
+
+O botão principal abre novamente o catálogo manual, com bandas e prévia georreferenciada. A investigação PRODES está disponível pelo botão superior e pelo menu Raster. Comandos de tarefa permitem preparar buscas/downloads ou iniciar investigação, sem depender do Ollama. Leia [GUIA_3.1.md](GUIA_3.1.md) para os comandos aceitos e os limites de qualidade.
+
+# Catálogo Multiespectral AOI — Investigação Ambiental 3.0 experimental
+
+**Nova central de investigação:** planeja por polígono, seleciona cenas pela QA local, busca datas intermediárias com orçamento, organiza hipóteses e orientação oficial, produz cartas UTM com contraste comparável e gera o pacote automaticamente. Interpretação visual opcional via modelo multimodal Ollama local; não inclui pesos nem precisão temática validada. Consulte [o guia 3.0](GUIA_3.0.md).
+
+**Argumentação 2.3.2:** justificativa por polígono com áreas, proporção da consolidada, datas úteis, amostra, lacunas, limites da mudança de data, possíveis incêndios e fundamento técnico/legal. Preserva os resultados calculados e diferencia indicação documental de divergência demonstrada pelas imagens.
+
+**Correção anterior 2.3.1:** o botão de análise agora pesquisa o histórico anterior e posterior. A comparação manual é identificada separadamente. O relatório informa quando o histórico não foi pesquisado e preserva a proporção dos mapas no PDF.
+
+**New in 2.3 experimental:** automatic two-vector workflow, historical before/after evidence (1985 by default through Y+2), candidate observation intervals for date review, exploratory NBR/dNBR disturbance and recovery screening, readable per-polygon recommendations and actual embedded maps in PDF/HTML. See [the 2.3 guide](GUIA_2.3.md). Independent thematic validation is still required; first observed change is not proof of first clearance or fire causation.
+
+**Introduced in 2.2 experimental:** first-stage automatic Landsat acquisition and maps, Y/Y−1/Y−2 per PRODES year, local archive reuse, technical consolidated-area overlap and preliminary contestability. See [the 2.2 guide](GUIA_2.2.md).
+
+**Introduced in 2.1 experimental:** automatic calibrated NDVI/NDMI screening of three dates inside parcel/PRODES intersections; local cloud, shadow and saturation masks; conservative coverage rules; independent agree/disagree review; technical/legal context and PDF/PNG/GeoPackage export. This is an explainable rule engine, not trained AI or an official false-PRODES/legal decision. QGIS 3.34.4 worker processing and full report export passed with synthetic imagery; classification accuracy has not been measured. See [the automatic analysis guide](GUIA_2.1.md).
 
 **English summary:** Search anonymous Landsat Collection 2 Level-2 and Sentinel-2 Level-2A scenes by a parcel polygon, filter scene cloud cover below 20%, preview imagery with the parcel boundary, select RGB bands, calculate NDVI and maintain a local offline archive. No account is required. QGIS 3.22–3.99, GDAL Python and NumPy are required. New downloads need internet. Experimental release; see [publication preparation](PUBLICACAO.md).
 
@@ -73,7 +107,7 @@ Requer GDAL Python e NumPy, presentes nas instalações usuais do QGIS. A busca 
 
 ## Validação desta versão
 
-24 testes locais passaram, incluindo: persistência do catálogo, separação de áreas/SRC, filtro de nuvens/datas, paginação completa, atualização incremental, reaproveitamento entre composições, recusa de rede em modo offline, retomada de downloads com falha cálculo numérico de NDVI com NoData, bandas PRODES por sensor, recortes em três tarefas com configurações isoladas e compartilhamento do token entre tarefas, recorte horizontal para imóveis estreitos e compatibilidade offline com acervos anteriores e validação dos metadados/pacote de publicação. Os testes de recorte simulam o GDAL; este ambiente não tem QGIS/GDAL instalado. A aparência da janela, a sobreposição de geometrias e a importação de cenas reais ainda precisam ser conferidas no QGIS.
+36 testes locais passaram, incluindo: persistência do catálogo, separação de áreas/SRC, filtro de nuvens/datas, paginação completa, atualização incremental, reaproveitamento entre composições, recusa de rede em modo offline, retomada de downloads com falha cálculo numérico de NDVI com NoData, bandas PRODES por sensor, recortes em três tarefas com configurações isoladas e compartilhamento do token entre tarefas, recorte horizontal para imóveis estreitos e compatibilidade offline com acervos anteriores e validação dos metadados/pacote de publicação e transporte de rede (HTTPS, redirecionamentos, erros e cancelamento). Os testes de recorte simulam o GDAL; este ambiente não tem QGIS/GDAL instalado. A aparência da janela, a sobreposição de geometrias e a importação de cenas reais ainda precisam ser conferidas no QGIS.
 
 **Créditos:** Kayky Pessoa de Araujo (autor); OpenAI Codex (colaboração no desenvolvimento); USGS/NASA (Landsat); ESA/Copernicus (Sentinel-2); Microsoft Planetary Computer (catálogo, prévias e hospedagem).
 
@@ -86,3 +120,35 @@ Esta versão prepara a publicação. O e-mail do autor e os links do projeto est
 Projeto público: https://github.com/kaykytopas-create/catalogo-multiespectral-aoi
 
 Relatos de problemas: https://github.com/kaykytopas-create/catalogo-multiespectral-aoi/issues
+
+## Segurança (desde a versão 0.9.2)
+
+Consultas STAC e assinaturas temporárias usam QgsNetworkAccessManager, respeitando a configuração de rede do QGIS. Endereços externos ao serviço autorizado e redirecionamentos são recusados. Erros de cache são registrados sem incluir URLs assinadas. Bandit 1.9.4 e detect-secrets 1.5.0 foram executados no pacote completo, sem ocorrências. Essa verificação local não substitui a avaliação do repositório QGIS.
+
+## Ajustes Qt6 da versão 0.9.3
+
+As 22 ocorrências de enumerações e execução de diálogo apontadas pelo repositório foram corrigidas; QAction usa uma importação compatível com Qt5 e Qt6. As referências Qt foram conferidas com PyQt5 5.15.11 e PyQt6 6.11.0. Os testes de transporte usam objetos simulados com enumerações apenas no formato novo. O plugin continua declarado para QGIS 3.22–3.99; a interface e o processamento completo precisam de validação no QGIS antes de declarar suporte ao QGIS 4.
+
+
+## Novidades 0.10.0 — composições e qualidade
+
+Escolha uma cena e abra **Opção de bandas**. PRODES continua como padrão. As três caixas de R, G e B permitem ajustar manualmente a composição; NDVI e NBR usam as respectivas bandas automaticamente.
+
+| Opção | Landsat 4/5/7 (R–G–B) | Landsat 8/9 (R–G–B) | Sentinel-2 (R–G–B) |
+|---|---|---|---|
+| Cor natural | 3–2–1 | 4–3–2 | 4–3–2 |
+| Infravermelho — vegetação | 4–3–2 | 5–4–3 | 8–4–3 |
+| Análise de vegetação / PRODES | 5–4–3 | 6–5–4 | 11–8–4 |
+| Infravermelho de ondas curtas | 7–4–3 | 7–5–4 | 12–8–4 |
+| Agricultura | 7–5–1 | 7–6–2 | 12–11–2 |
+| Terra / água | 4–5–3 | 5–6–4 | 8–11–4 |
+
+NBR = (NIR − SWIR2) / (NIR + SWIR2), com escala e offset da reflectância, saída Float32 e NoData −9999. É um índice, não uma composição RGB nem uma classificação automática de queimadas. A paleta é contínua; as cores podem diferir do LandViewer.
+
+**Qualidade:** os arquivos continuam na resolução das bandas de origem e conservam os valores radiométricos. O RGB usa a banda de melhor resolução para a grade do VRT; por exemplo, SWIR de 20 m do Sentinel-2 não ganha detalhes de 10 m por estar na mesma grade. O contraste tem amostragem ampliada e a suavização é exclusivamente visual.
+
+**Pixels ausentes:** os novos downloads são lidos integralmente antes de entrar no cache, com tentativas adicionais para falhas HTTP e tratamento explícito de NoData. Se uma banda antiga estiver corrompida, ela é recusada offline e recuperada com rede. Para refazer uma cena mesmo com cache legível, marque **Baixar novamente as bandas desta cena** antes de importar. Essa opção requer internet.
+
+Cenas Landsat 7 posteriores a maio de 2003 têm lacunas reais SLC-off. O plugin as identifica e permite ocultá-las na busca. Áreas fora da cobertura, lacunas do sensor e observações ausentes permanecem NoData. Nenhum pixel é inventado, interpolado para preencher falhas ou copiado de outra data. Sem uma amostra da cena com o defeito, não é possível confirmar a causa específica relatada.
+
+Referências: https://eos.com/make-an-analysis/vegetation-analysis/ ; https://eos.com/make-an-analysis/shortwave-infrared/ ; https://www.usgs.gov/landsat-missions/landsat-normalized-burn-ratio ; https://www.usgs.gov/faqs/what-landsat-7-etm-slc-data

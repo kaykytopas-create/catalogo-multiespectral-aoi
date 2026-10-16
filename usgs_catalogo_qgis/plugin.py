@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Kayky Pessoa de Araujo
 """QGIS UI for anonymous Landsat and Sentinel image retrieval."""
 import os
+import logging
 import json
 import math
 from datetime import date
@@ -9,26 +10,35 @@ from datetime import date
 from qgis.PyQt.QtCore import QDate, QSize, Qt, QThread, QUrl, QStandardPaths, pyqtSignal
 from qgis.PyQt.QtGui import QColor, QIcon, QPixmap
 from qgis.PyQt.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from qgis.PyQt.QtWidgets import (QAction, QCheckBox, QComboBox, QDateEdit, QDialog,
+from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog,
     QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
-    QFileDialog, QSlider)
+    QFileDialog, QSlider, QLineEdit, QTabWidget)
 from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
                        QgsProject, QgsRasterLayer, QgsVectorLayer, QgsWkbTypes,
                        QgsMultiBandColorRenderer, QgsContrastEnhancement,
                        QgsColorRampShader, QgsRasterShader,
                        QgsSingleBandPseudoColorRenderer, QgsSettings, QgsGeometry,
                        QgsCubicRasterResampler, QgsBilinearRasterResampler)
+try:
+    from qgis.PyQt.QtGui import QAction
+except ImportError:
+    from qgis.PyQt.QtWidgets import QAction
+
 from qgis.gui import QgsMapCanvas, QgsMapToolPan, QgsRubberBand
+from .commands import parse_command, describe_plan, collect_scenes, download_batch
 from .archive import LocalArchive
 from .stac import (COLLECTIONS, CatalogError, PublicCatalog, available_bands,
                    band_label, default_rgb_keys, natural_rgb_keys, ndvi_keys,
-                   preview_url, prodes_label)
+                   preview_url, prodes_label, PRESETS, preset_keys, index_keys, slc_gap_scene)
+
+from .public_sources import MultiCatalog as PublicCatalog, merge_scenes
 
 class Job(QThread):
     result = pyqtSignal(object)
     failed = pyqtSignal(str)
     status = pyqtSignal(str)
+    prepared = pyqtSignal(object)
 
     def __init__(self, action, **kwargs):
         super().__init__()
@@ -40,7 +50,11 @@ class Job(QThread):
     def run(self):
         client = PublicCatalog(cancelled=lambda: self.stopping)
         try:
-            if self.action == "search":
+            if self.action == "command_batch":
+                data = download_batch(client, self.args["archive"], self.args["plan"], self.status.emit, self.args["hide_slc"], on_ready=self.prepared.emit)
+            elif self.action == "command_search":
+                data = (collect_scenes(client, self.args["archive"], self.args["plan"], self.status.emit, self.args["hide_slc"]), None)
+            elif self.action == "search":
                 self.status.emit("Consultando imagens públicas…")
                 data = client.search(**self.args)
             elif self.action == "local":
@@ -56,7 +70,8 @@ class Job(QThread):
                 data = client.download_scene(item,
                     archive.scene_folder(item), archive.rect, archive.target_crs,
                     self.status.emit, self.args["rgb_keys"],
-                    self.args.get("product", "rgb"), self.args.get("offline", False))
+                    self.args.get("product", "rgb"), self.args.get("offline", False),
+                    self.args.get("force_download", False))
                 archive.remember(item, data[1])
             if not self.stopping:
                 self.result.emit(data)
@@ -94,7 +109,7 @@ class PreviewDialog(QDialog):
                 continue
             geometry = QgsGeometry(feature.geometry())
             geometry.transform(transform)
-            outline = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+            outline = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             outline.setToGeometry(geometry, None)
             outline.setStrokeColor(QColor("#48b7ff"))
             outline.setFillColor(QColor(0, 0, 0, 0))
@@ -122,7 +137,7 @@ class PreviewDialog(QDialog):
             self.reference.addItem(layer.name(), layer.id())
         toolbar.addWidget(self.reference, 1)
         toolbar.addWidget(QLabel("Opacidade da cena:"))
-        self.opacity = QSlider(Qt.Horizontal)
+        self.opacity = QSlider(Qt.Orientation.Horizontal)
         self.opacity.setRange(0, 100); self.opacity.setValue(100)
         self.opacity.setMaximumWidth(160)
         toolbar.addWidget(self.opacity)
@@ -160,7 +175,7 @@ class CatalogDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Catálogo Multiespectral | Imagens Orbitais")
+        self.setWindowTitle("Catálogo Multiespectral 3.5 | Imagens · PRODES · Consulta ambiental e fundiária")
         self.resize(1180, 850)
         self.job, self.next_link, self.active_scene, self.search_params = None, None, None, None
         self.scenes = []
@@ -173,9 +188,38 @@ class CatalogDialog(QDialog):
         self.preview_generation = 0
         self.preview_cache = {}
         self.preview_replies = set()
-        layout = QVBoxLayout(self)
-        intro = QLabel("Selecione o imóvel. A busca exibe apenas cenas com menos de 20% de nuvens. Não requer conta.")
+        outer = QVBoxLayout(self)
+        self.tabs = QTabWidget(self)
+        outer.addWidget(self.tabs)
+        imagery_page = QWidget(self.tabs)
+        self.tabs.addTab(imagery_page, "Imagens e investigação PRODES")
+        layout = QVBoxLayout(imagery_page)
+        intro = QLabel("Selecione o imóvel. Fontes públicas: USGS via Microsoft Planetary Computer + INPE/Brazil Data Cube. Cenas com menos de 20% de nuvens; sem conta.")
         intro.setWordWrap(True); layout.addWidget(intro)
+        prodes_button = QPushButton("2 · Abrir investigação PRODES — análise automática e relatório técnico")
+        prodes_button.clicked.connect(self.show_prodes)
+        layout.addWidget(prodes_button)
+        command_box = QGroupBox("Comandos de tarefa — sem necessidade de IA local ou Codex")
+        command_layout = QVBoxLayout(command_box)
+        self.command_text = QLineEdit()
+        self.command_text.setPlaceholderText("Baixe e importe no QGIS uma imagem por ano de 2000 a 2008, cor natural, 0% de nuvens")
+        command_layout.addWidget(self.command_text)
+        command_row = QHBoxLayout()
+        self.plan_button = QPushButton("Ver plano (não executa)")
+        self.execute_command_button = QPushButton("Executar plano mostrado")
+        self.run_command_button = QPushButton("Executar comando")
+        self.execute_command_button.setEnabled(False)
+        command_row.addWidget(self.run_command_button); command_row.addWidget(self.plan_button); command_row.addWidget(self.execute_command_button)
+        command_layout.addLayout(command_row)
+        self.command_plan_label = QLabel("Informe destino: importar no QGIS ou salvar no acervo. Padrão: Landsat, uma cena por ano, composição da lista atual; filtros não são relaxados.")
+        self.command_plan_label.setWordWrap(True); command_layout.addWidget(self.command_plan_label)
+        layout.addWidget(command_box)
+        self.command_plan = None
+        self.run_command_button.clicked.connect(self.run_command)
+        self.command_text.returnPressed.connect(self.run_command)
+        self.plan_button.clicked.connect(self.plan_command)
+        self.execute_command_button.clicked.connect(self.execute_command)
+        self.command_text.textChanged.connect(self.clear_command_plan)
         box = QGroupBox("Pesquisar imagens"); form = QFormLayout(box)
         self.layer_box = QComboBox(); self.refresh = QPushButton("Atualizar camadas")
         row = QWidget(); h = QHBoxLayout(row); h.setContentsMargins(0, 0, 0, 0)
@@ -185,7 +229,7 @@ class CatalogDialog(QDialog):
         form.addRow("Fonte:", self.offline)
         self.archive_path = QgsSettings().value("catalogo_multiespectral/acervo", "", type=str)
         if not self.archive_path:
-            documents = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~")
+            documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation) or os.path.expanduser("~")
             self.archive_path = os.path.join(documents, "Catalogo_Multiespectral_Acervo")
         self.archive_label = QLabel(self.archive_path)
         self.archive_label.setWordWrap(True)
@@ -198,6 +242,10 @@ class CatalogDialog(QDialog):
         row = QWidget(); h = QHBoxLayout(row); h.setContentsMargins(0, 0, 0, 0)
         h.addWidget(self.landsat); h.addWidget(self.sentinel); h.addStretch()
         form.addRow("Satélites:", row)
+        self.hide_slc = QCheckBox("Ocultar Landsat 7 com lacunas do sensor (SLC-off)")
+        self.hide_slc.setChecked(True)
+        self.hide_slc.setToolTip("Cenas posteriores a maio de 2003 têm lacunas reais. Desmarque para incluí-las e refaça a busca.")
+        form.addRow("Integridade da cena:", self.hide_slc)
         self.year = QComboBox()
         self.year.addItem("Período personalizado", None)
         self.year.addItem("Todo o histórico (1982–hoje)", -1)
@@ -216,25 +264,25 @@ class CatalogDialog(QDialog):
         self.year.currentIndexChanged.connect(self.year_changed)
         self.search = QPushButton("Buscar imagens com nuvens < 20%")
         self.more = QPushButton("Próximas cenas"); self.more.setEnabled(False)
-        self.sync_button = QPushButton("Baixar / atualizar todas as cenas do período")
+        self.sync_button = QPushButton("Acervo completo — todas as cenas e bandas (demorado)")
         row = QHBoxLayout(); row.addWidget(self.search); row.addWidget(self.more)
         row.addWidget(self.sync_button); row.addStretch()
         layout.addLayout(row)
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(["Miniatura", "Ano", "Data", "Satélite", "Nuvens", "Cena", "Acervo local"])
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SingleSelection)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setIconSize(QSize(152, 110))
         self.table.setColumnWidth(0, 165)
         self.table.setColumnWidth(1, 65)
         self.table.setColumnWidth(2, 105)
         self.table.setColumnWidth(3, 115)
         self.table.setColumnWidth(4, 80)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(6, 135)
         self.preview_large = QLabel("Selecione uma cena para ver a prévia ampliada")
-        self.preview_large.setAlignment(Qt.AlignCenter)
+        self.preview_large.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_large.setWordWrap(True)
         self.preview_large.setMinimumWidth(300)
         self.preview_large.setMaximumWidth(340)
@@ -242,7 +290,15 @@ class CatalogDialog(QDialog):
         content = QHBoxLayout(); content.addWidget(self.table, 1); content.addWidget(self.preview_large)
         layout.addLayout(content, 1)
         band_box = QGroupBox("Composição RGB — escolha as bandas")
-        band_row = QHBoxLayout(band_box)
+        band_layout = QVBoxLayout(band_box)
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(QLabel("Opção de bandas:"))
+        self.preset = QComboBox()
+        self.preset.setMinimumContentsLength(28)
+        preset_row.addWidget(self.preset, 1)
+        band_layout.addLayout(preset_row)
+        band_row = QHBoxLayout()
+        band_layout.addLayout(band_row)
         self.rgb_boxes = []
         for label in ("Vermelho (R)", "Verde (G)", "Azul (B)"):
             band_row.addWidget(QLabel(label))
@@ -253,16 +309,16 @@ class CatalogDialog(QDialog):
         self.natural_color = QPushButton("Cor natural")
         band_row.addWidget(self.false_color); band_row.addWidget(self.natural_color)
         layout.addWidget(band_box)
-        self.false_color.clicked.connect(lambda: self.set_rgb(
-            default_rgb_keys(self.scenes[self.table.currentRow()])
-            if 0 <= self.table.currentRow() < len(self.scenes) else ()))
-        self.natural_color.clicked.connect(lambda: self.set_rgb(
-            natural_rgb_keys(self.scenes[self.table.currentRow()])
-            if 0 <= self.table.currentRow() < len(self.scenes) else ()))
+        self.preset.currentIndexChanged.connect(self.apply_preset)
+        self.false_color.clicked.connect(lambda: self.preset.setCurrentIndex(self.preset.findData("prodes")))
+        self.natural_color.clicked.connect(lambda: self.preset.setCurrentIndex(self.preset.findData("natural")))
         self.smooth_rgb = QCheckBox("Suavizar pixels na visualização RGB")
-        self.smooth_rgb.setChecked(True)
+        self.smooth_rgb.setChecked(False)
         self.smooth_rgb.setToolTip("Suavização apenas na tela e nos mapas. Desmarque para inspecionar os pixels originais. Não aumenta o detalhe do satélite nem altera o NDVI.")
         layout.addWidget(self.smooth_rgb)
+        self.repair = QCheckBox("Baixar novamente as bandas desta cena (recuperar acervo)")
+        self.repair.setToolTip("Ignora as bandas em cache e baixa novos recortes. Requer internet; não preenche lacunas reais do sensor.")
+        layout.addWidget(self.repair)
         self.import_button = QPushButton("Ver prévia no mapa e importar RGB")
         self.import_button.setEnabled(False)
         self.ndvi_button = QPushButton("Calcular NDVI da cena")
@@ -285,6 +341,164 @@ class CatalogDialog(QDialog):
         self.table.itemSelectionChanged.connect(self.selection_changed)
         self.year_changed()
         self.refresh_layers()
+        from .environmental_ui import EnvironmentalTab
+        self.environmental_tab = EnvironmentalTab(self.iface, self.tabs)
+        self.tabs.addTab(self.environmental_tab, "Situação ambiental e fundiária")
+
+    def run_command(self):
+        if self.job:return
+        self.plan_command()
+        if self.command_plan:self.execute_command()
+
+    def clear_command_plan(self):
+        self.command_plan = None
+        self.execute_command_button.setEnabled(False)
+        self.command_plan_label.setText("Use Executar comando para agir ou Ver plano para conferir.")
+
+    def plan_command(self):
+        try:
+            self.command_plan = parse_command(self.command_text.text(), default_preset=self.preset.currentData() or "prodes")
+            self.command_plan_label.setStyleSheet("")
+            self.command_plan_label.setText(describe_plan(self.command_plan))
+            self.execute_command_button.setEnabled(True)
+        except Exception as exc:
+            self.clear_command_plan()
+            self.command_plan_label.setStyleSheet("color:#a32626")
+            self.command_plan_label.setText(str(exc))
+            self.info.setText(str(exc))
+
+    def execute_command(self):
+        if self.job or not self.command_plan:
+            return
+        plan = dict(self.command_plan)
+        if plan['action'] == 'investigate':
+            self.show_prodes()
+            central = self.prodes_dialog
+            if central.job or central.maps_in_progress:
+                QMessageBox.warning(self, "Comando", "Uma investigação já está em execução.")
+                return
+            central.refresh_layers()
+            index = central.property_box.findData(self.layer_box.currentData())
+            if index >= 0: central.property_box.setCurrentIndex(index)
+            central.agent_profile.setCurrentIndex(central.agent_profile.findData(plan['profile']))
+            central.agent_enabled.setChecked(True)
+            central.agent_offline.setChecked(plan['offline'])
+            if plan.get('year'):
+                central.all_years.setChecked(False)
+                central.year.setValue(plan['year'])
+            central.scene_cloud_limit.setValue(plan.get('cloud_max',20))
+            central.scene_cloud_strict.setChecked(plan.get('cloud_strict',True))
+            central.auto_export.setChecked(True)
+            central.start_pipeline()
+            return
+        try:
+            self.year.setCurrentIndex(0)
+            self.start.setDate(QDate.fromString(plan['start'], 'yyyy-MM-dd'))
+            self.end.setDate(QDate.fromString(plan['end'], 'yyyy-MM-dd'))
+            self.landsat.setChecked('landsat-c2-l2' in plan['collections'])
+            self.sentinel.setChecked('sentinel-2-l2a' in plan['collections'])
+            self.offline.setChecked(plan['offline'])
+            layer = QgsProject.instance().mapLayer(self.layer_box.currentData())
+            features = list(layer.getSelectedFeatures()) if layer and layer.selectedFeatureCount() else (list(layer.getFeatures()) if layer else [])
+            if len(features)!=1:raise CatalogError('Selecione uma única feição de imóvel para o comando, ou use uma camada contendo apenas esse imóvel.')
+            geometry = QgsGeometry(features[0].geometry())
+            if geometry.isEmpty() or not geometry.isGeosValid():raise CatalogError('Corrija a geometria do limite antes de executar o comando.')
+            geometry.transform(QgsCoordinateTransform(layer.crs(), QgsCoordinateReferenceSystem('EPSG:4326'), QgsProject.instance()))
+            self.search_params = self.current_search()
+            box=geometry.boundingBox()
+            self.archive = LocalArchive(self.archive_path,(box.xMinimum(),box.yMinimum(),box.xMaximum(),box.yMaximum()),layer.crs().authid() or layer.crs().toWkt(),allow_legacy=plan['offline'])
+            self.search_params['rect']=self.archive.rect
+            self.command_import_context={'layer_id':layer.id(),'geometry':geometry.asWkt(),'preset':plan['preset'],'auto_import':plan.get('auto_import',False),'archive':self.archive,'feature_id':features[0].id(),'original_geometry':features[0].geometry().asWkt()}
+            self.command_import_results=[]
+            self.reset_results()
+            self.pending_command_preset = plan['preset']
+            self.run_job('command_batch' if plan['action']=='download' else 'command_search',
+                self.got_command_batch if plan['action']=='download' else self.got_scenes,
+                archive=self.archive, plan=dict(plan, geometry_wkt=geometry.asWkt()), hide_slc=self.hide_slc.isChecked())
+        except Exception as exc:
+            QMessageBox.warning(self, "Comando", str(exc))
+
+    def got_command_batch(self, response):
+        self.got_scenes((response['scenes'], None))
+        results = response['receipt']['results']
+        failures = sum(row['status']=='failed' for row in results)
+        imported=sum(row.get('status')=='imported' for row in getattr(self,'command_import_results',[]))
+        import_failures=sum(row.get('status')=='failed' for row in getattr(self,'command_import_results',[]))
+        warnings=sum(row.get('quality',{}).get('valid_fraction',1) is not None and row.get('quality',{}).get('valid_fraction',1)<.98 for row in getattr(self,'command_import_results',[]))
+        message = "Lote concluído: {} arquivos preparados; {} falhas de download; {} camadas importadas; {} falhas de importação; {} avisos de pixels. Manifesto: {}".format(len(results)-failures, failures, imported, import_failures, warnings, response['manifest'])
+        if response['missing_years']: message += " · Anos sem imagem preparada (filtro, QA ou falha): " + ', '.join(map(str,response['missing_years']))
+        if response['receipt'].get('source_warnings'):message += ' · Fontes incompletas: '+ '; '.join(response['receipt']['source_warnings'])
+        message += ' · Candidatas rejeitadas/falhas: '+str(len(response['receipt'].get('attempts',[])))
+        self.info.setText(message)
+        self.command_plan_label.setText(message)
+        if not results or failures or import_failures or response['missing_years']:
+            QMessageBox.information(self, "Resultado do comando", message)
+
+
+    def import_command_image(self, event):
+        context=getattr(self,'command_import_context',{})
+        if not context.get('auto_import'):return
+        from .raster_quality import inspect_raster
+        import uuid
+        item=event['item'];record=event['result'];project=QgsProject.instance()
+        outcome={'scene_id':record['scene_id'],'date':record['date'],'path':record['path']}
+        try:
+            anchor=project.mapLayer(context['layer_id'])
+            if not anchor:raise CatalogError('O limite foi removido do projeto durante o download; camada não importada.')
+            feature=anchor.getFeature(context['feature_id'])
+            if not feature.isValid() or feature.geometry().asWkt()!=context['original_geometry']:raise CatalogError('O limite foi editado durante a tarefa. Arquivo salvo, mas não importado para evitar referência a outra geometria.')
+            product=context['preset'] if context['preset'] in ('ndvi','nbr') else 'rgb'
+            signature='{}|{}|{}|{}'.format(context['archive'].area_id,record['scene_id'],product,','.join(record['bands']))
+            title='{} · {} · {}'.format(context['preset'].upper(),record['date'],record['scene_id'])
+            layer=QgsRasterLayer(record['path'],title,'gdal')
+            if not layer.isValid() or layer.bandCount()!=(1 if product!='rgb' else 3):raise CatalogError('Raster inválido ou quantidade de bandas incorreta.')
+            try:
+                quality=inspect_raster(record['path'],context['geometry'])
+            except Exception as exc:
+                quality={'status':'inspection_failed','error':str(exc)}
+            if quality.get('valid_fraction')==0:raise CatalogError('Raster sem pixels com dados na amostra do imóvel; não importado.')
+            if quality.get('status') in ('missing_pixels','inspection_failed','insufficient_sample'):
+                layer.setName(title+' [conferir qualidade]')
+            layer.setCustomProperty('catalogo_multiespectral_qualidade',json.dumps(quality))
+            layer.setCustomProperty('catalogo_multiespectral_fontes',json.dumps(item.get('catalog:sources',[])))
+            if product=='rgb':self.configure_rgb(layer,False,item,record['bands'])
+            else:self.configure_ndvi(layer)
+            for existing in list(project.mapLayers().values()):
+                if existing.customProperty('catalogo_multiespectral_assinatura','')==signature:project.removeMapLayer(existing.id())
+            for key,value in [('assinatura',signature),('cena',record['scene_id']),('data',record['date']),('bandas',','.join(record['bands']))]:
+                layer.setCustomProperty('catalogo_multiespectral_'+key,value)
+            if product=='rgb':
+                from .prodes_auto import scene_metadata
+                try:layer.setCustomProperty('catalogo_multiespectral_espectral',json.dumps(scene_metadata(item,record['bands'],context['archive'].scene_folder(item))))
+                except Exception:pass
+            root=project.layerTreeRoot()
+            group_name='Comando · '+context['preset'].upper()+' · '+context['archive'].area_id[:8]
+            group=root.findGroup(group_name) or root.insertGroup(0,group_name)
+            project.addMapLayer(layer,False);group.addLayer(layer)
+            outcome.update(status='imported',layer_id=layer.id(),quality=quality)
+            try:
+                canvas=self.iface.mapCanvas()
+                transform=QgsCoordinateTransform(QgsCoordinateReferenceSystem('EPSG:4326'),canvas.mapSettings().destinationCrs(),project)
+                canvas.setExtent(transform.transformBoundingBox(QgsGeometry.fromWkt(context['geometry']).boundingBox()))
+                canvas.refresh()
+            except Exception:pass
+            self.info.setText('Importada no QGIS: '+record['date']+' · '+record['scene_id'])
+        except Exception as exc:
+            outcome.update(status='failed',error=str(exc))
+        self.command_import_results.append(outcome)
+        path=event['manifest']+'.importacao.json'
+        try:
+            with open(path+'.part','w',encoding='utf8') as stream:json.dump(self.command_import_results,stream,ensure_ascii=False,indent=2)
+            os.replace(path+'.part',path)
+        except OSError as exc:self.info.setText('Não foi possível registrar a importação: '+str(exc))
+
+    def show_prodes(self):
+        from .prodes_ui import ProdesDialog
+        if not hasattr(self, "prodes_dialog"):
+            self.prodes_dialog = ProdesDialog(self.iface, self)
+        self.prodes_dialog.show()
+        self.prodes_dialog.raise_()
+        self.prodes_dialog.activateWindow()
 
     def year_changed(self):
         year = self.year.currentData()
@@ -313,6 +527,9 @@ class CatalogDialog(QDialog):
             reply.abort()
         self.reset_results()
         self.sync_button.setEnabled(not self.offline.isChecked() and self.job is None)
+        self.repair.setEnabled(not self.offline.isChecked())
+        if self.offline.isChecked():
+            self.repair.setChecked(False)
         self.search.setText("Buscar no acervo local" if self.offline.isChecked() else "Buscar imagens com nuvens < 20%")
 
     def select_archive_folder(self):
@@ -372,7 +589,20 @@ class CatalogDialog(QDialog):
                 combo.clear()
                 for key, asset in available_bands(scene):
                     combo.addItem(band_label(key, asset), key)
-            self.set_rgb(default_rgb_keys(scene))
+            self.preset.blockSignals(True)
+            self.preset.clear()
+            for identifier, label, keys in PRESETS:
+                selected = preset_keys(scene, identifier)
+                if selected:
+                    bands = dict(available_bands(scene))
+                    names = [str((bands[key].get("eo:bands") or [{}])[0].get("name", key)) for key in selected]
+                    self.preset.addItem(label + " — " + " / ".join(names), identifier)
+            for product in ("ndvi", "nbr"):
+                if index_keys(scene, product):
+                    self.preset.addItem(product.upper() + " — índice espectral", product)
+            self.preset.addItem("Personalizada — escolher R, G e B", "custom")
+            self.preset.blockSignals(False)
+            self.apply_preset()
         self.update_import_button()
         url = preview_url(scene, 560)
         local = os.path.join(self.archive.scene_folder(scene), "miniatura_560.png") if self.archive else ""
@@ -390,6 +620,19 @@ class CatalogDialog(QDialog):
             self.preview_queue.insert(0, (row, url, self.preview_generation, True))
             self.pump_previews()
 
+    def apply_preset(self):
+        row = self.table.currentRow()
+        if not 0 <= row < len(self.scenes):
+            return
+        product = self.preset.currentData()
+        if product not in ("ndvi", "nbr", "custom"):
+            self.set_rgb(preset_keys(self.scenes[row], product))
+        is_index = product in ("ndvi", "nbr")
+        for combo in self.rgb_boxes:
+            combo.setEnabled(not is_index)
+        self.import_button.setText("Ver prévia no mapa e importar " + (product.upper() if is_index else "RGB"))
+        self.update_import_button()
+
     def set_rgb(self, keys):
         if len(keys) != 3:
             return
@@ -401,7 +644,7 @@ class CatalogDialog(QDialog):
     def show_large(self, pixmap):
         if not pixmap.isNull():
             self.preview_large.setPixmap(pixmap.scaled(320, 320,
-                Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     def pump_previews(self):
         if self.offline.isChecked():
@@ -423,7 +666,7 @@ class CatalogDialog(QDialog):
     def preview_finished(self, reply, row, url, generation, large):
         self.preview_active -= 1
         self.preview_replies.discard(reply)
-        if reply.error() == QNetworkReply.NoError:
+        if reply.error() == QNetworkReply.NetworkError.NoError:
             pixmap = QPixmap()
             pixmap.loadFromData(reply.readAll())
             if not pixmap.isNull():
@@ -434,7 +677,7 @@ class CatalogDialog(QDialog):
                         os.makedirs(folder, exist_ok=True)
                         pixmap.save(os.path.join(folder, "miniatura_{}.png".format(560 if large else 180)))
                     except OSError:
-                        pass
+                        logging.getLogger(__name__).warning("Não foi possível salvar a miniatura no acervo.")
                 self.apply_preview(row, url, generation, large, pixmap)
         reply.deleteLater()
         self.pump_previews()
@@ -450,13 +693,13 @@ class CatalogDialog(QDialog):
             if item:
                 item.setText("")
                 item.setIcon(QIcon(pixmap.scaled(152, 110,
-                    Qt.KeepAspectRatio, Qt.SmoothTransformation)))
+                    Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)))
 
     def refresh_layers(self):
         current = self.layer_box.currentData(); self.layer_box.clear()
         layers = [layer for layer in QgsProject.instance().mapLayers().values()
                   if isinstance(layer, QgsVectorLayer) and layer.isValid() and
-                  layer.geometryType() == QgsWkbTypes.PolygonGeometry]
+                  layer.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry]
         for layer in sorted(layers, key=lambda layer: layer.name().lower()):
             self.layer_box.addItem(layer.name(), layer.id())
         index = self.layer_box.findData(current) if current else -1
@@ -484,27 +727,44 @@ class CatalogDialog(QDialog):
         if self.job: return
         self.job = Job(action, **kwargs)
         self.job.status.connect(self.info.setText)
+        if action=="command_batch":self.job.prepared.connect(self.import_command_image)
         self.job.result.connect(callback)
-        self.job.failed.connect(lambda message: QMessageBox.warning(self, "Imagens públicas", message))
+        self.job.failed.connect(self.command_error)
         self.job.finished.connect(self.finished_job)
         self.set_busy(True); self.job.start()
 
+    def command_error(self, message):
+        self.info.setText('Tarefa interrompida: '+message)
+        self.command_plan_label.setText('Tarefa interrompida: '+message)
+        QMessageBox.warning(self, 'Imagens públicas', message)
+
     def finished_job(self):
+        stopped=self.job.stopping
         self.job.deleteLater(); self.job = None; self.set_busy(False)
+        if stopped:
+            self.info.setText('Tarefa cancelada. Arquivos concluídos e {} camadas já importadas foram preservados.'.format(sum(v.get('status')=='imported' for v in getattr(self,'command_import_results',[]))))
+        if getattr(self, 'pending_command_preset', None) and self.scenes:
+            self.table.selectRow(0)
+            index = self.preset.findData(self.pending_command_preset)
+            if index >= 0: self.preset.setCurrentIndex(index)
+        self.pending_command_preset = None
 
     def set_busy(self, busy):
-        for widget in (self.layer_box, self.refresh, self.landsat, self.sentinel,
+        for widget in (self.command_text, self.plan_button, self.execute_command_button, self.run_command_button,
+                       self.layer_box, self.refresh, self.landsat, self.sentinel,
                        self.start, self.end, self.year, self.search, self.more,
                        self.import_button, self.ndvi_button,
                        self.offline, self.choose_archive, self.sync_button,
-                       self.false_color, self.natural_color, self.smooth_rgb,
+                       self.false_color, self.natural_color, self.smooth_rgb, self.preset, self.hide_slc, self.repair,
                        *self.rgb_boxes, self.table):
             widget.setEnabled(not busy)
+        self.execute_command_button.setEnabled(not busy and self.command_plan is not None)
         self.cancel_button.setEnabled(busy)
         if not busy:
             self.more.setEnabled(bool(self.next_link))
-            self.update_import_button()
+            self.apply_preset()
             self.sync_button.setEnabled(not self.offline.isChecked())
+            self.repair.setEnabled(not self.offline.isChecked())
 
     def update_import_button(self):
         row = self.table.currentRow()
@@ -541,8 +801,14 @@ class CatalogDialog(QDialog):
             self.archive.remember_many(scenes)
         seen = {(item.get("collection"), item.get("id")) for item in self.scenes}
         for scene in scenes:
+            if self.hide_slc.isChecked() and slc_gap_scene(scene):
+                continue
             identity = (scene.get("collection"), scene.get("id"))
             if identity in seen:
+                existing=next(item for item in self.scenes if (item.get('collection'),item.get('id'))==identity)
+                existing.update(merge_scenes([existing,scene])[0])
+                row=self.scenes.index(existing)
+                self.table.setItem(row,5,QTableWidgetItem(str(existing.get('id',''))+' · '+ '/'.join(existing.get('catalog:sources',[]))))
                 continue
             seen.add(identity)
             props = scene.get("properties", {})
@@ -550,8 +816,8 @@ class CatalogDialog(QDialog):
             cloud = props.get("eo:cloud_cover")
             row = self.table.rowCount(); self.table.insertRow(row)
             fields = [acquired[:4], acquired,
-                      str(props.get("platform") or scene.get("collection", "")),
-                      "{:.1f}%".format(float(cloud)), str(scene.get("id", ""))]
+                      str(props.get("platform") or scene.get("collection", "")) + (" ⚠ SLC-off" if slc_gap_scene(scene) else ""),
+                      "{:.1f}%".format(float(cloud)), str(scene.get("id", "")) + " · " + "/".join(scene.get("catalog:sources", []))]
             self.table.setRowHeight(row, 118)
             self.table.setItem(row, 0, QTableWidgetItem("Ver no mapa" if self.offline.isChecked() else "Carregando…"))
             for col, value in enumerate(fields, 1):
@@ -568,13 +834,15 @@ class CatalogDialog(QDialog):
         self.more.setEnabled(bool(self.next_link))
         self.info.setText("{} cenas com menos de 20% de nuvens listadas. {}".format(
             len(self.scenes), "Há mais resultados." if self.next_link else "Fim da busca."))
+        source_warnings=getattr(scenes,'warnings',[])
+        if source_warnings:self.info.setText(self.info.text()+' · Fontes incompletas: '+ '; '.join(source_warnings))
         if self.archive and self.archive.uses_legacy_extent and self.offline.isChecked():
             self.info.setText("Acervo anterior: a suavização está disponível; para obter o novo recorte horizontal, desmarque offline e baixe/atualize a área uma vez.")
         if not self.scenes and self.offline.isChecked():
             self.info.setText("Não há cenas locais para esta área e período. Desmarque offline e baixe/atualize o acervo.")
 
     def import_scene(self):
-        self.import_product("rgb")
+        self.import_product(self.preset.currentData() if self.preset.currentData() in ("ndvi", "nbr") else "rgb")
 
     def import_ndvi(self):
         self.import_product("ndvi")
@@ -584,8 +852,8 @@ class CatalogDialog(QDialog):
         if row < 0 or row >= len(self.scenes): return
         self.active_scene = self.scenes[row]
         selected_rgb = tuple(combo.currentData() for combo in self.rgb_boxes)
-        if product == "ndvi":
-            selected_rgb = ndvi_keys(self.active_scene)
+        if product in ("ndvi", "nbr"):
+            selected_rgb = index_keys(self.active_scene, product)
             if not selected_rgb:
                 QMessageBox.warning(self, "Catálogo Multiespectral", "Esta cena não oferece NIR e vermelho para NDVI.")
                 return
@@ -607,7 +875,7 @@ class CatalogDialog(QDialog):
         self.active_bands = selected_rgb
         self.run_job("download", self.got_rasters, item=self.active_scene,
             archive=archive, rgb_keys=selected_rgb, product=product,
-            offline=self.offline.isChecked())
+            offline=self.offline.isChecked(), force_download=self.repair.isChecked())
 
     def got_rasters(self, result):
         files, errors, composite = result
@@ -615,17 +883,17 @@ class CatalogDialog(QDialog):
         scene_id = (self.active_scene or {}).get("id", "cena")
         signature = "{}|{}|{}|{}".format(self.active_archive.area_id, scene_id,
                                           self.active_product, ",".join(self.active_bands))
-        label = ("NDVI" if self.active_product == "ndvi" else
+        label = (self.active_product.upper() if self.active_product in ("ndvi", "nbr") else
                  "RGB {}".format("/".join(self.active_bands)))
         layer = QgsRasterLayer(composite, "{} | {} | {}".format(label, acquired, scene_id), "gdal")
-        expected_bands = 1 if self.active_product == "ndvi" else 3
+        expected_bands = 1 if self.active_product in ("ndvi", "nbr") else 3
         if not layer.isValid() or layer.bandCount() != expected_bands:
             QMessageBox.warning(self, "Catálogo Multiespectral", "O QGIS não conseguiu abrir o raster {}.".format(label))
             return
-        if self.active_product == "ndvi":
+        if self.active_product in ("ndvi", "nbr"):
             self.configure_ndvi(layer)
         else:
-            self.configure_rgb(layer, self.smooth_rgb.isChecked())
+            self.configure_rgb(layer, self.smooth_rgb.isChecked(), self.active_scene, self.active_bands)
         project = QgsProject.instance()
         property_layer = project.mapLayer(self.active_layer_id)
         if property_layer is None:
@@ -634,13 +902,31 @@ class CatalogDialog(QDialog):
         props = self.active_scene.get("properties", {})
         description = "{} | {} | {} | Nuvens: {:.1f}% | {}".format(
             acquired, props.get("platform", ""), label, float(props.get("eo:cloud_cover", 0)), scene_id)
+        if slc_gap_scene(self.active_scene):
+            description += " | ATENÇÃO: lacunas reais do sensor Landsat 7 (SLC-off)"
+        try:
+            from .raster_quality import inspect_raster
+            features = list(property_layer.getFeatures())
+            geometry = QgsGeometry.unaryUnion([f.geometry() for f in features])
+            geometry.transform(QgsCoordinateTransform(property_layer.crs(), QgsCoordinateReferenceSystem('EPSG:4326'), project))
+            quality = inspect_raster(composite, geometry.asWkt())
+            layer.setCustomProperty('catalogo_multiespectral_qualidade', json.dumps(quality))
+            if quality.get('valid_fraction') is not None:
+                description += ' | Pixels com dados no imóvel (amostra): {:.1f}%'.format(100*quality['valid_fraction'])
+                if quality['valid_fraction'] < .98:
+                    QMessageBox.warning(self, 'Pixels sem dados', 'A inspeção encontrou pixels sem dados em uma ou mais bandas dentro do imóvel. Confira a prévia e escolha outra cena se a lacuna atingir sua área de classificação. Não haverá preenchimento artificial.')
+            else: description += ' | Amostra insuficiente para verificar pixels sem dados'
+        except Exception as exc:
+            description += ' | Inspeção de pixels indisponível: ' + str(exc)
+        if errors:
+            description += ' | Avisos de aquisição: ' + '; '.join(errors[:2])
         try:
             preview = PreviewDialog(layer, property_layer, description, self.iface,
                                     self.offline.isChecked(), self)
         except Exception as exc:
             QMessageBox.warning(self, "Prévia", "Não foi possível desenhar o limite: " + str(exc))
             return
-        accepted = preview.exec_() == QDialog.Accepted
+        accepted = preview.exec() == QDialog.DialogCode.Accepted
         preview.deleteLater()
         for row, item in enumerate(self.scenes):
             self.table.setItem(row, 6, QTableWidgetItem(self.archive.status(item)))
@@ -652,8 +938,17 @@ class CatalogDialog(QDialog):
                 project.removeMapLayer(existing.id())
         layer.setCustomProperty("catalogo_multiespectral_assinatura", signature)
         layer.setCustomProperty("catalogo_multiespectral_cena", scene_id)
+        layer.setCustomProperty("catalogo_multiespectral_fontes", json.dumps(item.get("catalog:sources", [])))
         layer.setCustomProperty("catalogo_multiespectral_data", acquired)
         layer.setCustomProperty("catalogo_multiespectral_bandas", ",".join(self.active_bands))
+        if self.active_product == "rgb":
+            from .prodes_auto import scene_metadata
+            try:
+                spectral = scene_metadata(self.active_scene, list(self.active_bands),
+                    self.active_archive.scene_folder(self.active_scene))
+                layer.setCustomProperty("catalogo_multiespectral_espectral", json.dumps(spectral))
+            except Exception:
+                logging.getLogger(__name__).warning("Calibração automática indisponível nesta cena; RGB preservado.")
         project.addMapLayer(layer, False)
         root = project.layerTreeRoot()
         property_node = root.findLayer(self.active_layer_id)
@@ -679,7 +974,7 @@ class CatalogDialog(QDialog):
                   (0.6, "#4d9d42", "0,60"),
                   (1.0, "#155b35", "1,00")]
         ramp = QgsColorRampShader(-1, 1)
-        ramp.setColorRampType(QgsColorRampShader.Interpolated)
+        ramp.setColorRampType(QgsColorRampShader.Type.Interpolated)
         ramp.setColorRampItemList([QgsColorRampShader.ColorRampItem(value,
             QColor(color), label) for value, color, label in colors])
         shader = QgsRasterShader(-1, 1)
@@ -688,7 +983,7 @@ class CatalogDialog(QDialog):
         layer.triggerRepaint()
 
     @staticmethod
-    def configure_rgb(layer, smooth=True):
+    def configure_rgb(layer, smooth=False, item=None, keys=None):
         provider = layer.dataProvider()
         renderer = QgsMultiBandColorRenderer(provider, 1, 2, 3)
         # Persist display limits; reopening the same composition avoids rescans.
@@ -707,7 +1002,15 @@ class CatalogDialog(QDialog):
             if cached.get("signature") == signature:
                 limits = cached.get("limits", {})
         except (OSError, ValueError, TypeError):
-            pass
+            limits = {}  # Missing/invalid cached display limits are recalculated.
+        natural = None
+        if item is not None:
+            from .catalog_quality import natural_limits
+            natural = natural_limits(item, keys)
+        if natural is not None:
+            limits = natural
+            signature = None  # Do not reuse or overwrite independent-channel stretch.
+            layer.setCustomProperty('catalogo_multiespectral_contraste', 'Cor natural: reflectância comum 0–0,30; sem alterar DN')
         for band, setter in ((1, renderer.setRedContrastEnhancement),
                              (2, renderer.setGreenContrastEnhancement),
                              (3, renderer.setBlueContrastEnhancement)):
@@ -715,7 +1018,7 @@ class CatalogDialog(QDialog):
                 if str(band) in limits:
                     low, high = limits[str(band)]
                 else:
-                    low, high = provider.cumulativeCut(band, 0.02, 0.98, layer.extent(), 65536)
+                    low, high = provider.cumulativeCut(band, 0.02, 0.98, layer.extent(), 262144)
                 if high <= low:
                     stats = provider.bandStatistics(band)
                     low, high = stats.minimumValue, stats.maximumValue
@@ -723,12 +1026,12 @@ class CatalogDialog(QDialog):
                     limits[str(band)] = [low, high]
                     enhancement = QgsContrastEnhancement(provider.dataType(band))
                     enhancement.setContrastEnhancementAlgorithm(
-                        QgsContrastEnhancement.StretchToMinimumMaximum)
+                        QgsContrastEnhancement.ContrastEnhancementAlgorithm.StretchToMinimumMaximum)
                     enhancement.setMinimumValue(low)
                     enhancement.setMaximumValue(high)
                     setter(enhancement)
             except Exception:
-                pass
+                logging.getLogger(__name__).warning("Não foi possível calcular o contraste da banda %s.", band)
         layer.setRenderer(renderer)
         resampling = layer.resampleFilter()
         if resampling:
@@ -742,9 +1045,18 @@ class CatalogDialog(QDialog):
                     json.dump({"signature": signature, "limits": limits}, stream, allow_nan=False)
                 os.replace(stats_file + ".part", stats_file)
             except (OSError, ValueError):
-                pass
+                logging.getLogger(__name__).warning("Não foi possível salvar os limites de contraste.")
 
     def closeEvent(self, event):
+        if hasattr(self, "environmental_tab") and self.environmental_tab.job:
+            self.environmental_tab.cancel()
+            self.environmental_tab.job.finished.connect(self.close)
+            event.ignore()
+            return
+        if hasattr(self, "prodes_dialog") and self.prodes_dialog.job and self.prodes_dialog.job.isRunning():
+            self.prodes_dialog.cancel()
+            event.ignore()
+            return
         if self.job:
             self.cancel_job(); self.job.finished.connect(self.close); event.ignore()
         else:
@@ -754,13 +1066,22 @@ class CatalogDialog(QDialog):
 class USGSCatalogPlugin:
     def __init__(self, iface):
         self.iface, self.action, self.dialog = iface, None, None
+        self.prodes_action = None
 
     def initGui(self):
         self.action = QAction(QIcon(os.path.join(os.path.dirname(__file__), "icon.png")),
-                              "Catálogo Multiespectral por Área de Interesse", self.iface.mainWindow())
+                              "Catálogo Multiespectral — imagens e investigação PRODES", self.iface.mainWindow())
         self.action.triggered.connect(self.show_dialog)
         self.iface.addPluginToRasterMenu("Catálogo Multiespectral", self.action)
         self.iface.addToolBarIcon(self.action)
+        self.prodes_action = QAction("Investigação PRODES — relatório automático", self.iface.mainWindow())
+        self.prodes_action.triggered.connect(self.show_prodes)
+        self.iface.addPluginToRasterMenu("Catálogo Multiespectral", self.prodes_action)
+
+    def show_prodes(self):
+        if self.dialog is None:
+            self.dialog = CatalogDialog(self.iface, self.iface.mainWindow())
+        self.dialog.show_prodes()
 
     def show_dialog(self):
         if self.dialog is None:
@@ -770,7 +1091,19 @@ class USGSCatalogPlugin:
     def unload(self):
         self.iface.removePluginRasterMenu("Catálogo Multiespectral", self.action)
         self.iface.removeToolBarIcon(self.action)
+        if self.prodes_action:
+            self.iface.removePluginRasterMenu("Catálogo Multiespectral", self.prodes_action)
         if self.dialog:
+            if hasattr(self.dialog, "prodes_dialog"):
+                prodes = self.dialog.prodes_dialog
+                if prodes.maps_in_progress:prodes.map_stopping=True
+                if prodes.job:
+                    prodes.job.stopping = True
+                    prodes.job.wait()
+                prodes.close()
+            if hasattr(self.dialog, "environmental_tab") and self.dialog.environmental_tab.job:
+                self.dialog.environmental_tab.cancel()
+                self.dialog.environmental_tab.job.wait()
             if self.dialog.job:
                 self.dialog.job.cancel(); self.dialog.job.wait()
             self.dialog.close()

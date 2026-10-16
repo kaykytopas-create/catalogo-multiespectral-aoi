@@ -8,6 +8,7 @@ import types
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import unittest
+import uuid
 from unittest.mock import patch
 
 from usgs_catalogo_qgis.archive import LocalArchive, digest
@@ -109,8 +110,25 @@ class ArchiveTests(unittest.TestCase):
             with open(path, "w") as stream: stream.write(json.dumps(sources))
             return object()
         return types.SimpleNamespace(UseExceptions=lambda: None, SetConfigOption=lambda *args: None,
-            Open=lambda path: object(), WarpOptions=lambda **kwargs: kwargs, Warp=warp,
+            Open=lambda path: types.SimpleNamespace(RasterXSize=1, RasterYSize=1, RasterCount=1,
+                GetRasterBand=lambda index: types.SimpleNamespace(GetBlockSize=lambda: (1, 1),
+                    ReadRaster=lambda *args: b"xx")), WarpOptions=lambda **kwargs: kwargs, Warp=warp,
             BuildVRTOptions=lambda **kwargs: kwargs, BuildVRT=vrt)
+
+    def test_repair_option_downloads_cached_band_again(self):
+        with tempfile.TemporaryDirectory() as folder:
+            warps = []
+            client = PublicCatalog()
+            client.signed_url = lambda href: href
+            with patch.dict(sys.modules, {"osgeo": types.SimpleNamespace(gdal=self.fake_gdal(warps, []))}):
+                arguments = (scene(), folder, (-50, -7, -49, -6), "EPSG:31982", lambda _: None, ["red"])
+                client.cache_bands(*arguments)
+                client.cache_bands(*arguments)
+                self.assertEqual(len(warps), 1)
+                result, errors = client.cache_bands(*arguments, force_download=True)
+                self.assertFalse(errors)
+                self.assertIn("red", result)
+                self.assertEqual(len(warps), 2)
 
     def test_two_compositions_share_bands_and_reopen_offline_without_network(self):
         warps, vrts = [], []
@@ -213,11 +231,12 @@ class ArchiveTests(unittest.TestCase):
 
     def test_parallel_signing_requests_share_one_access_token(self):
         client = PublicCatalog()
+        signature = "sig=" + uuid.uuid4().hex
         calls = []
         barrier = threading.Barrier(3)
         def request(url, payload=None):
             calls.append(url)
-            return {"token": "sig=shared"}
+            return {"token": signature}
         client.json_request = request
         def sign(index):
             barrier.wait(timeout=5)
@@ -226,18 +245,19 @@ class ArchiveTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=3) as pool:
             results = list(pool.map(sign, range(3)))
         self.assertEqual(len(calls), 1)
-        self.assertTrue(all(value.endswith("?sig=shared") for value in results))
+        self.assertTrue(all(value.endswith("?" + signature) for value in results))
 
     def test_expired_access_token_is_refreshed_for_long_updates(self):
         client = PublicCatalog()
+        signature = "?sig=" + uuid.uuid4().hex
         client._tokens[("landsateuwest", "landsat-c2")] = "sig=old&se=2000-01-01T00%3A00%3A00Z"
         calls = []
         def request(url, payload=None):
             calls.append(url)
-            return {"token": "?sig=new"}
+            return {"token": signature}
         client.json_request = request
         result = client.signed_url("https://landsateuwest.blob.core.windows.net/landsat-c2/red.tif")
-        self.assertTrue(result.endswith("?sig=new"))
+        self.assertTrue(result.endswith(signature))
         self.assertEqual(len(calls), 1)
 
 

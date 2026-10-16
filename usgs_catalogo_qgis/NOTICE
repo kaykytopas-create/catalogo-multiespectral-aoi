@@ -14,9 +14,18 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE.
 Author: Kayky Pessoa de Araujo.
 Development assistance: OpenAI Codex.
 Data credits: USGS/NASA (Landsat), ESA/Copernicus (Sentinel-2).
-Catalog, anonymous access and hosting: Microsoft Planetary Computer.
+Catalog, anonymous access and hosting: Microsoft Planetary Computer and INPE/Brazil Data Cube.
 INPE: reference for the main PRODES Amazon spectral composites.
 This is an independent project, not an official plugin of these institutions.
 
 No satellite imagery is bundled. The software license does not replace
 terms applicable to external imagery and services.
+
+Public environmental and land-tenure source credits (3.5): SICAR/SFB,
+IBAMA/Pamgia, ICMBio/INDE, SEMAS/PA (LDI), ITERPA (public Para land archive).
+Judicial metadata: Conselho Nacional de Justica (CNJ), Base Nacional de Dados
+do Poder Judiciario (DataJud). The public application key may rotate; see
+https://datajud-wiki.cnj.jus.br/api-publica/acesso/ for current access and terms.
+The software license does not replace source-specific data/service terms.
+Reports do not certify title, environmental/legal clearance or exhaustive
+public-process discovery. No cadastral client data or reports are bundled.

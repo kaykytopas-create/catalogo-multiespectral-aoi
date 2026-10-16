@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026 Kayky Pessoa de Araujo
 import tempfile
+import configparser
 import unittest
 from pathlib import Path
 import zipfile
@@ -9,6 +10,22 @@ from usgs_catalogo_qgis.tools.prepare_release import build, release_errors
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_actual_metadata_can_be_read_by_the_public_repository_parser(self):
+        parser = configparser.ConfigParser()
+        parser.read(Path(__file__).resolve().parents[1] / "metadata.txt", encoding="utf-8")
+        self.assertTrue(dict(parser.items("general")))
+        self.assertIn("20 percent", parser.get("general", "about"))
+
+    def test_validator_rejects_the_literal_percent_upload_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = self.fixture(root)
+            values["about"] = "Scene cloud cover below 20%, preview imagery."
+            self.assertTrue(any("Interpolação inválida em about" in error
+                                for error in release_errors(root, values)))
+            values["about"] = "Scene cloud cover below 20 percent, preview imagery."
+            self.assertFalse(release_errors(root, values))
+
     def fixture(self, root):
         for filename in ("__init__.py", "LICENSE", "NOTICE", "README.md", "icon.png"):
             (root / filename).write_bytes(b"test fixture")
@@ -34,7 +51,7 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             values = self.fixture(root)
-            for url in ("https://example.com/repo", "https://user:token@github.com/repo",
+            for url in ("https://example.com/repo", "https://user@github.com/repo",
                         "http://github.com/fixture/repo", "https://project.invalid/repo"):
                 values["repository"] = url
                 self.assertTrue(any("repository" in error for error in release_errors(root, values)))

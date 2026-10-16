@@ -12,6 +12,6 @@ These tests simulate GDAL downloads. They do not verify QGIS rendering or live p
 
 For a report, include plugin version, QGIS and GDAL versions, operating system, scene ID, selected bands, CRS, offline state, reproducible steps and the full error message. Use the public issue tracker once configured. Remove owner identifiers and private project paths. Do not attach credentials, SAS tokens or client data.
 
-Keep comments in English, use `qgis.PyQt`, preserve source band values and NDVI scaling, and keep all network operations out of the UI thread. New download providers should respect the QGIS proxy configuration; the current urllib/GDAL paths need manual proxy verification where required.
+Keep comments in English, use `qgis.PyQt`, preserve source band values and NDVI scaling, and keep all network operations out of the UI thread. New download providers should respect the QGIS proxy configuration; STAC and SAS requests use QgsNetworkAccessManager; GDAL raster reads still need manual proxy verification where required.
 
 Contributions are distributed under GPL-2.0-or-later. Do not commit caches, downloaded imagery, ZIP releases, compiled Python files or private parcel data. The source repository must contain the unpacked source matching the submitted ZIP.

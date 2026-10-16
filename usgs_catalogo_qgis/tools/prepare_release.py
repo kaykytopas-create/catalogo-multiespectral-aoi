@@ -27,6 +27,19 @@ def metadata(root):
 def release_errors(root, values):
     errors = ["Campo obrigatório ausente: " + key for key in REQUIRED
               if not values.get(key, "").strip()]
+    # The public repository reads metadata with BasicInterpolation enabled.
+    # RawConfigParser validation alone misses literal percent-sign failures.
+    public_parser = configparser.ConfigParser()
+    public_parser.add_section("general")
+    for key, value in values.items():
+        try:
+            public_parser.set("general", key, value)
+        except ValueError:
+            errors.append("Interpolação inválida em " + key + ": escreva percentuais por extenso.")
+    try:
+        list(public_parser.items("general"))
+    except configparser.InterpolationError as exc:
+        errors.append("Metadados incompatíveis com o leitor público: " + str(exc))
     email = values.get("email", "")
     if email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         errors.append("E-mail de contato inválido.")

@@ -1,0 +1,9 @@
+# Validação 3.4 experimental — 7 de outubro de 2026
+
+Executados 177 testes: 159 passaram e 18 foram pulados por ausência do runtime nativo QGIS/GDAL neste ambiente. Os dez novos testes verificam normalização dos sensores e bandas INPE, calibração, acesso sem token, restrição HTTPS/servidor/caminho, unificação de produtos e espelhos, paginação independente, falha parcial com aviso, isolamento de Sentinel, nuvens ausentes ou acima do limite, fallback de banda e persistência no acervo. Transporte e GDAL nesses testes são simulados. Compilação dos módulos Python e validação do pacote ZIP concluídas.
+
+Verificação online real, sem autenticação, usando o código `MultiCatalog.search_inpe`: área [-50.5, -5.5, -49, -4] e período 2000–2008. Primeira página: 37 cenas aceitas de uma página de 100, nuvens de 0 a 18%; segunda página: 33 cenas aceitas e 33 identificadores novos. Confirmada a paginação real do serviço. Uma requisição HTTP Range à banda vermelha retornou HTTP 206, image/tiff e 16.384 bytes com cabeçalho GeoTIFF/TIFF válido. A extensão STAC query provocou HTTP 500 no servidor e foi removida desta integração; a filtragem ocorre localmente, sem alterar os limites.
+
+Não foi feito download completo nem renderização nativa de um recorte INPE nesta versão. A importação nativa e a qualidade local foram verificadas com dados sintéticos no desenvolvimento da 3.3, conforme VALIDACAO_3.3.md; essa validação não substitui testar a nova fonte em imóveis reais. Falta validar visualmente uma aquisição completa INPE na instalação do usuário e avaliar o comportamento sob indisponibilidade prolongada dos servidores.
+
+Não foi medida acurácia temática ou legal, nem demonstrada a meta de 80%. Não há garantia de anos completos ou melhoria da resolução espacial. O pacote permanece experimental e não foi enviado ao repositório público QGIS nesta etapa.
