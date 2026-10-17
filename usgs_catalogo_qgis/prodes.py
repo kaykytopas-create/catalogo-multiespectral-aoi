@@ -201,7 +201,8 @@ def report_html(context, rows, maps=()):
 
 def _technical_report_html(context, rows, maps=()):
     automatic = any(row.get("mode") == "automatic" or row.get("contestability") for row in rows)
-    esc = lambda value: html.escape("Sim" if value is True else "Não" if value is False else str(value), quote=True)
+    def esc(value):
+        return html.escape("Sim" if value is True else "Não" if value is False else str(value), quote=True)
     body = """<html><head><meta charset='utf-8'><style>
 body{font-family:Arial,sans-serif;color:#20343d;font-size:11pt}h1{font-size:20pt;color:#155b55}
 h2{font-size:14pt;color:#155b55}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd8da;padding:6px;text-align:left}
@@ -250,7 +251,8 @@ th{background:#eaf3f1}.note{background:#fff3d8;padding:10px}img{width:680px}p{li
                 esc(stats.get("common_pixels", 0)), esc("{:.1f}%".format(100 * stats.get("common_coverage", 0))))
             body += "<table><tr><th>Data</th><th>Pixels válidos</th><th>Cobertura local</th><th>NDVI mediano</th><th>NDMI mediano</th></tr>"
             for when, values in zip(row.get("dates", []), stats.get("per_date", [])):
-                fmt = lambda v: "—" if v is None else "{:.3f}".format(v)
+                def fmt(value):
+                    return "—" if value is None else "{:.3f}".format(value)
                 body += "<tr><td>{}</td><td>{}</td><td>{:.1f}%</td><td>{}</td><td>{}</td></tr>".format(
                     esc(when), values["valid_pixels"], 100 * values["coverage"], fmt(values["ndvi_median"]), fmt(values["ndmi_median"]))
             body += "</table><p><b>Opinião do revisor:</b> {}. Notas: {}.</p>".format(esc(row.get("user_review", "A revisar")), esc(row.get("notes", "")))

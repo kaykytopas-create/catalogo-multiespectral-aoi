@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-import copy
-import json
 import os
 import sys
 import tempfile
@@ -8,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
-from usgs_catalogo_qgis.public_sources import MultiCatalog, normalize_inpe, merge_scenes, SearchResults
+from usgs_catalogo_qgis.public_sources import MultiCatalog, normalize_inpe
 from usgs_catalogo_qgis.stac import CatalogError, natural_rgb_keys, default_rgb_keys, ndvi_keys, preview_url
 from usgs_catalogo_qgis.archive import LocalArchive
 from usgs_catalogo_qgis.tests import test_archive

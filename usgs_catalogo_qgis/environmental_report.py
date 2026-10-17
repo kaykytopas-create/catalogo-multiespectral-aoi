@@ -63,7 +63,8 @@ def display_field(key,value):
 
 
 def render_html(report):
-    esc=lambda value:html.escape(str(value if value is not None else 'Não informado'))
+    def esc(value):
+        return html.escape(str(value if value is not None else 'Não informado'))
     prop=report['property'];lines=['<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>Consulta ambiental e fundiária</title>',
         '<style>body{font-family:Arial,sans-serif;color:#203141;font-size:10.5pt;line-height:1.25;max-width:1080px;margin:30px auto}h1{font-size:21pt;color:#163e4d}h2{font-size:13pt;margin-top:14px;color:#163e4d}table{border-collapse:collapse;width:100%;font-size:9pt}th{background:#e8f0f1;text-align:left}td,th{padding:4px;border:1px solid #ccd7dd;vertical-align:top;word-break:break-word}.note{background:#f1f5f5;padding:12px}.muted{color:#526477;font-size:10pt}a{color:#155a7a}p{margin-top:4px;margin-bottom:6px}h3{font-size:11pt;margin:10px 0 4px}tr{page-break-inside:avoid}@media print{body{margin:0}h2{page-break-after:avoid}thead{display:table-header-group}}</style></head><body>',
         '<h1>Consulta ambiental e fundiária</h1>',
@@ -112,7 +113,7 @@ def render_html(report):
             lines+=['<p><b>'+esc(s['label'])+' — pendências:</b> '+esc('; '.join(s['warnings'][:3]))+'</p>']
     lines+=['<p class="muted">Os nomes das bases no quadro de resultados abrem os portais oficiais. Data/hora de cada consulta, páginas e identificadores de evidência constam no JSON. As consultas sem data de atualização publicada representam a resposta obtida, sem garantia de atualização da base no dia da consulta.</p>']
     lines+=['<p class="note">CAR ativo não significa análise aprovada. Um registro espacial de embargo exige confirmar o termo, sua vigência e eventuais suspensões no órgão competente. Processo vinculado não significa decisão condenatória. Não foi pesquisado todo o universo de processos públicos. Registros fundiários não constituem certidão de domínio.</p>',
-            '<p class="muted">Catálogo Multiespectral AOI 3.5.1 · Kayky Pessoa de Araujo · desenvolvido com assistência do OpenAI Codex. Dados: SICAR/SFB, IBAMA, ICMBio, SEMAS/PA, ITERPA e CNJ/DataJud, conforme disponibilidade. Projeto independente.</p></body></html>']
+            '<p class="muted">Catálogo Multiespectral AOI 3.5.2 · Kayky Pessoa de Araujo · desenvolvido com assistência do OpenAI Codex. Dados: SICAR/SFB, IBAMA, ICMBio, SEMAS/PA, ITERPA e CNJ/DataJud, conforme disponibilidade. Projeto independente.</p></body></html>']
     return '\n'.join(lines)
 
 

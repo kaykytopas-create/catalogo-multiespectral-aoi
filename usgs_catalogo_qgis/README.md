@@ -1,3 +1,7 @@
+# Correção 3.5.2 — apontamentos Flake8
+
+Corrigidos os seis itens de qualidade apresentados pelo verificador de publicação: quatro E731 (funções de formatação), um F811 (importação duplicada) e um E741 (nome de variável ambíguo). Também removidas importações sem uso. Nenhuma regra foi ocultada por comentário de supressão ou configuração do verificador. Leia [VALIDACAO_3.5.2.md](VALIDACAO_3.5.2.md).
+
 # Correção 3.5.1 — validação para publicação
 
 Corrigidos os quatro apontamentos de compatibilidade Qt/QGIS, os dois alertas de exceções silenciosas e a chave pública DataJud embutida. A consulta judicial obtém a chave no portal oficial CNJ ou usa o valor informado na sessão, sem persistência. 205 testes passaram no QGIS 3.34.4; Bandit e detect-secrets sem apontamentos na verificação local. Leia [VALIDACAO_3.5.1.md](VALIDACAO_3.5.1.md). Reenvie o ZIP 3.5.1 ao verificador do repositório.

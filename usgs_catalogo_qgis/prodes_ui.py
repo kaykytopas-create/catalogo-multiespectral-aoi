@@ -13,7 +13,7 @@ from qgis.PyQt.QtCore import QDate, QThread, QUrl, QStandardPaths, QTimer, pyqtS
 from qgis.PyQt.QtGui import QColor, QTextDocument, QImage, QFont, QDesktopServices
 from qgis.PyQt.QtPrintSupport import QPrinter
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog,
-    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QMessageBox, QPushButton, QSpinBox, QDoubleSpinBox, QTabWidget, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget, QScrollArea)
 from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
@@ -25,7 +25,7 @@ from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
 from qgis.gui import QgsMapCanvas, QgsMapToolPan
 from .prodes import TerraBrasilis, ProdesError, record, evaluate, report_html, annual_layers, ENDPOINT, RULE_VERSION
 from .prodes_geometry import polygon_copy
-from .prodes_auto import AUTO_RULE_VERSION, THRESHOLDS, metadata_for_layer, run_analysis
+from .prodes_auto import THRESHOLDS, metadata_for_layer, run_analysis
 from .prodes_contestation import CONTEST_RULE_VERSION
 from .prodes_autofetch import run_autofetch
 from .prodes_agent import run_investigation, append_event

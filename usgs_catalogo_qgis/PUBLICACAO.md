@@ -1,4 +1,4 @@
-# Publicação — 3.5.1 experimental
+# Publicação — 3.5.2 experimental
 
 Atualização preparada para envio; não foi publicada automaticamente.
 
@@ -15,12 +15,12 @@ Nova aba de situação ambiental e fundiária, com consulta pública do CAR, emb
 ## Envio
 
 1. Instale o ZIP 3.5 em uma instalação QGIS 3.x e confira uma propriedade da sua área de trabalho. A validação registrada foi feita no QGIS 3.34.4; outras instalações devem ser conferidas.
-2. Atualize os arquivos no repositório `https://github.com/kaykytopas-create/catalogo-multiespectral-aoi` e crie uma versão/tag `v3.5.1`, se estiver usando releases do GitHub.
+2. Atualize os arquivos no repositório `https://github.com/kaykytopas-create/catalogo-multiespectral-aoi` e crie uma versão/tag `v3.5.2`, se estiver usando releases do GitHub.
 3. Entre em `https://plugins.qgis.org/`, abra a página do seu complemento e envie uma nova versão usando o ZIP instalável. Mantenha a indicação experimental nesta etapa.
 4. Informe as mudanças e o alcance regional das fontes fundiárias. A publicação depende do envio e da revisão/aprovação do repositório QGIS; criar o ZIP não o torna disponível automaticamente.
 
 ## Verificação já preparada no pacote
 
-Metadados completos, versão numérica 3.5.1, licença e créditos, links públicos existentes do projeto, guias de uso/validação e histórico de versões. O empacotador valida os campos e a interpolação de percentuais, evita caches/arquivos de usuário e testa a integridade do ZIP. A versão continua declarando QGIS 3.22–3.99; não foi declarada compatibilidade com QGIS 4.
+Metadados completos, versão numérica 3.5.2, licença e créditos, links públicos existentes do projeto, guias de uso/validação e histórico de versões. O empacotador valida os campos e a interpolação de percentuais, evita caches/arquivos de usuário e testa a integridade do ZIP. A versão continua declarando QGIS 3.22–3.99; não foi declarada compatibilidade com QGIS 4.
 
-Não inclua relatórios de clientes, projetos, recortes de satélite, recibos reais, chaves privadas ou bases locais no repositório público. O pacote gerado não contém esses arquivos. Consulte GUIA_3.5.md, VALIDACAO_3.5.md e VALIDACAO_3.5.1.md para comportamento e limitações verificadas.
+Não inclua relatórios de clientes, projetos, recortes de satélite, recibos reais, chaves privadas ou bases locais no repositório público. O pacote gerado não contém esses arquivos. Consulte GUIA_3.5.md, VALIDACAO_3.5.md, VALIDACAO_3.5.1.md e VALIDACAO_3.5.2.md para comportamento e limitações verificadas.

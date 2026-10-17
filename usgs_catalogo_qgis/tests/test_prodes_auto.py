@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 import numpy as np
 from usgs_catalogo_qgis.prodes_auto import (spectral_indices, qa_valid, summarise,
-    decide, temporal_issue, metadata_for_layer, scene_metadata, run_analysis)
+    decide, temporal_issue, metadata_for_layer, run_analysis)
 from usgs_catalogo_qgis.prodes import report_html, ProdesError
 from usgs_catalogo_qgis.stac import reflectance_coefficients
 

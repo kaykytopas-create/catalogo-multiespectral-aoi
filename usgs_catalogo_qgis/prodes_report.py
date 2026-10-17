@@ -72,7 +72,8 @@ th{background:#e8f2f0}.note{background:#fff1d1;padding:10px}
             body+='<p><b>Período pesquisado:</b> {}. <b>Anos sem observação utilizável:</b> {}.</p>'.format('{}–{}'.format(min(years),max(years)) if years else 'Não disponível',esc(', '.join(map(str,history.get('missing_years',[]))) or 'Nenhum no período consultado'))
             body+='<h3>Linha do tempo das imagens</h3><table><tr><th>Data</th><th>Condição da observação</th><th>NDVI</th><th>NDMI</th></tr>'
             for observation in history.get('observations',[]):
-                fmt=lambda value:'—' if value is None else '{:.3f}'.format(value)
+                def fmt(value):
+                    return '—' if value is None else '{:.3f}'.format(value)
                 body+='<tr><td>{}</td><td>{} · {} pixels · {:.0f}% de cobertura</td><td>{}</td><td>{}</td></tr>'.format(esc(observation['date']),'Utilizável' if observation['usable'] else 'Insuficiente',observation['pixels'],100*observation['coverage'],fmt(observation['ndvi']),fmt(observation['ndmi']))
             body+='</table>'
         else:

@@ -28,8 +28,8 @@ except ImportError:
 from qgis.gui import QgsMapCanvas, QgsMapToolPan, QgsRubberBand
 from .commands import parse_command, describe_plan, collect_scenes, download_batch
 from .archive import LocalArchive
-from .stac import (COLLECTIONS, CatalogError, PublicCatalog, available_bands,
-                   band_label, default_rgb_keys, natural_rgb_keys, ndvi_keys,
+from .stac import (COLLECTIONS, CatalogError, available_bands,
+                   band_label, ndvi_keys,
                    preview_url, prodes_label, PRESETS, preset_keys, index_keys, slc_gap_scene)
 
 from .public_sources import MultiCatalog as PublicCatalog, merge_scenes
@@ -175,7 +175,7 @@ class CatalogDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Catálogo Multiespectral 3.5.1 | Imagens · PRODES · Consulta ambiental e fundiária")
+        self.setWindowTitle("Catálogo Multiespectral 3.5.2 | Imagens · PRODES · Consulta ambiental e fundiária")
         self.resize(1180, 850)
         self.job, self.next_link, self.active_scene, self.search_params = None, None, None, None
         self.scenes = []
@@ -439,7 +439,6 @@ class CatalogDialog(QDialog):
         context=getattr(self,'command_import_context',{})
         if not context.get('auto_import'):return
         from .raster_quality import inspect_raster
-        import uuid
         item=event['item'];record=event['result'];project=QgsProject.instance()
         outcome={'scene_id':record['scene_id'],'date':record['date'],'path':record['path']}
         try:

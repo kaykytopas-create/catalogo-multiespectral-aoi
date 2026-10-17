@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import parse_qs,urlparse
 from usgs_catalogo_qgis.environmental import (EnvironmentalClient,car_code,display_car,judicial_number,parse_ldi,
-    run_assessment,result,LABELS,LAND_LAYERS,ConsultationError)
+    run_assessment,result,LABELS,ConsultationError)
 from usgs_catalogo_qgis.environmental_http import Budget,BudgetExpired,ConsultationCancelled,allowed_url
 from usgs_catalogo_qgis.environmental_report import render_html,save_report,land_summary
 
@@ -163,7 +163,7 @@ class EnvironmentalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             paths=save_report(report,folder)
             self.assertTrue(all(Path(p).exists() for p in paths.values()));self.assertIn("'=1+2",Path(paths['csv']).read_text('utf-8-sig'))
-            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.1');self.assertFalse(list(Path(folder).glob('*.part')))
+            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.2');self.assertFalse(list(Path(folder).glob('*.part')))
 
 try:
     from qgis.core import QgsApplication
@@ -230,7 +230,6 @@ class EnvironmentalQtTests(unittest.TestCase):
         with self.fake_manager(body=b'0123456789'),self.assertRaises(ConsultationError):PublicHttp(Budget(),max_bytes=4)(url)
     def test_native_readonly_post_form_for_large_parcel_and_json_for_datajud(self):
         from usgs_catalogo_qgis.environmental_http import PublicHttp
-        from qgis.PyQt.QtNetwork import QNetworkRequest
         with self.fake_manager():
             PublicHttp(Budget())('https://arcgisportal.iterpa.pa.gov.br/server/rest/services/SICARF/acervoFundiarioMapserver/MapServer/72/query',{'geometry':'with space','f':'json'})
         request,payload,_=self.requests[0];self.assertIn(b'geometry=with+space',bytes(payload));self.assertEqual(bytes(request.rawHeader(b'Content-Type')),b'application/x-www-form-urlencoded')

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Anonymous Landsat federation: Planetary Computer and INPE BDC scenes only."""
-import copy,json,urllib.parse
+import copy,urllib.parse
 from .stac import PublicCatalog,CatalogError,visible_scenes,search_payload
 INPE_ROOT='https://data.inpe.br/bdc/stac/v1/'
 INPE_COLLECTION='landsat-2'
@@ -60,7 +60,7 @@ class MultiCatalog(PublicCatalog):
         data=self.json_request(url)
         if data.get('type')!='FeatureCollection':raise CatalogError('Resposta INPE sem lista de cenas.')
         result=[normalize_inpe(item) for item in data.get('features',[])]
-        link=next((l for l in data.get('links',[]) if l.get('rel')=='next'),None)
+        link=next((link for link in data.get('links',[]) if link.get('rel')=='next'),None)
         return visible_scenes(result),link
 
     def search(self,collections,rect,start,end,next_link=None):

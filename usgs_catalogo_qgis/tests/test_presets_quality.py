@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from usgs_catalogo_qgis.stac import (CatalogError, PublicCatalog, preset_keys,
+from usgs_catalogo_qgis.stac import (CatalogError, preset_keys,
     index_keys, slc_gap_scene, validate_raster, validate_cached_raster, write_index)
 
 
