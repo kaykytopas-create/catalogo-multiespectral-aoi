@@ -398,7 +398,7 @@ def run_assessment(context, progress=lambda source,status:None, cancelled=lambda
                     pending[pool.submit(tasks['ldi'])]='ldi'
     sources['other_processes']=result('other_processes','pending',
         'A busca não cobre todos os processos administrativos, judiciais, municipais, SEI, SIMLAM, recursos ou registros sem geometria. Os processos identificados são os vinculados nos dados consultados e os números CNJ informados; confira os portais dos órgãos.')
-    report=dict(version='3.5.4',generated_at=now(),elapsed_seconds=round(clock()-start,2),time_budget_seconds=min(300,seconds),
+    report=dict(version='3.5.3',generated_at=now(),elapsed_seconds=round(clock()-start,2),time_budget_seconds=min(300,seconds),
         state='cancelled' if cancelled() else 'time_limit' if not budget.remaining() else 'finished',
         property={'name':str(context.get('name','Imóvel')),'uf':context['uf'],'car':display_car(context['car']),
                   'bbox':context['rect'],'geometry_wkt':context['wkt'],'crs':'EPSG:4326','geometry_sha256':hashlib.sha256(context['wkt'].encode()).hexdigest(),

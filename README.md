@@ -1,15 +1,8 @@
-# Catálogo Multiespectral por Área de Interesse — QGIS 3.5.4
+# Catálogo Multiespectral por Área de Interesse — QGIS 3.5.3
 
-## Atualização 3.5.4 — simbologia do NDVI
+Restaurada a versão 3.5.3, com a simbologia anterior do NDVI. A atualização 3.5.4 foi retirada a pedido do autor. As cores podem ser personalizadas nas propriedades da camada no QGIS.
 
-- Escala contínua fixa: vermelho, laranja, amarelo, verde claro e verde escuro.
-- Valores altos de NDVI aparecem em verde escuro; a escala vai de −1 a +1 em todas as cenas.
-- Aplicada na prévia, importação manual e importação por comandos, inclusive a produtos do acervo reabertos pelo plugin.
-- Cálculo, bandas, resolução e valores dos arquivos NDVI preservados. As cores não constituem classificação automática de pastagem, floresta ou desmatamento.
-- Camadas já existentes no projeto mantêm seu estilo salvo. Reimporte o NDVI pelo plugin para usar a nova escala.
-- Mantidas as melhorias da versão instalada 3.5.3: controles roláveis e botão de importação no rodapé.
-
-Documentação atual: [usgs_catalogo_qgis/README.md](usgs_catalogo_qgis/README.md). Use o ZIP instalável da versão; o ZIP automático de fontes do GitHub não é o instalador QGIS.
+Documentação atual: [usgs_catalogo_qgis/README.md](usgs_catalogo_qgis/README.md).
 
 
 **English summary:** Search anonymous Landsat Collection 2 Level-2 and Sentinel-2 Level-2A scenes by a parcel polygon, filter scene cloud cover below 20%, preview imagery with the parcel boundary, select RGB bands, calculate NDVI and maintain a local offline archive. No account is required. QGIS 3.22–3.99, GDAL Python and NumPy are required. New downloads need internet. Experimental release; see [publication preparation](PUBLICACAO.md).

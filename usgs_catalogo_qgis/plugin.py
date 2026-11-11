@@ -177,7 +177,7 @@ class CatalogDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Catálogo Multiespectral 3.5.4 | Imagens · PRODES · Consulta ambiental e fundiária")
+        self.setWindowTitle("Catálogo Multiespectral 3.5.3 | Imagens · PRODES · Consulta ambiental e fundiária")
         self.resize(1180, 850)
         screen = self.screen()
         if screen:
@@ -492,7 +492,7 @@ class CatalogDialog(QDialog):
             layer.setCustomProperty('catalogo_multiespectral_qualidade',json.dumps(quality))
             layer.setCustomProperty('catalogo_multiespectral_fontes',json.dumps(item.get('catalog:sources',[])))
             if product=='rgb':self.configure_rgb(layer,False,item,record['bands'])
-            else:self.configure_ndvi(layer, product)
+            else:self.configure_ndvi(layer)
             for existing in list(project.mapLayers().values()):
                 if existing.customProperty('catalogo_multiespectral_assinatura','')==signature:project.removeMapLayer(existing.id())
             for key,value in [('assinatura',signature),('cena',record['scene_id']),('data',record['date']),('bandas',','.join(record['bands']))]:
@@ -926,7 +926,7 @@ class CatalogDialog(QDialog):
             QMessageBox.warning(self, "Catálogo Multiespectral", "O QGIS não conseguiu abrir o raster {}.".format(label))
             return
         if self.active_product in ("ndvi", "nbr"):
-            self.configure_ndvi(layer, self.active_product)
+            self.configure_ndvi(layer)
         else:
             self.configure_rgb(layer, self.smooth_rgb.isChecked(), self.active_scene, self.active_bands)
         project = QgsProject.instance()
@@ -1000,35 +1000,21 @@ class CatalogDialog(QDialog):
         self.info.setText("{} importado para {}. Arquivos preservados no acervo local.".format(label, acquired))
 
     @staticmethod
-    def configure_ndvi(layer, product="ndvi"):
-        # Fixed NDVI scale: the same value has the same color in every scene.
-        # These stops are display values, not land-cover classification thresholds.
-        colors = [(-1.0, "#d73027", "−1,00"),
-                  (0.0, "#d73027", "0,00"),
-                  (0.2, "#fc8d59", "0,20"),
-                  (0.4, "#ffff00", "0,40"),
-                  (0.6, "#7fff00", "0,60"),
-                  (0.8, "#168000", "0,80"),
-                  (1.0, "#006400", "1,00")]
-        if product == "nbr":
-            # Preserve the existing NBR symbology; this release changes NDVI only.
-            colors = [(-1.0, "#312c51", "−1,00"),
-                      (-0.2, "#8d6e99", "−0,20"),
-                      (0.0, "#d7b8ac", "0,00"),
-                      (0.2, "#e9dba0", "0,20"),
-                      (0.4, "#afd26b", "0,40"),
-                      (0.6, "#4d9d42", "0,60"),
-                      (1.0, "#155b35", "1,00")]
+    def configure_ndvi(layer):
+        colors = [(-1.0, "#312c51", "−1,00"),
+                  (-0.2, "#8d6e99", "−0,20"),
+                  (0.0, "#d7b8ac", "0,00"),
+                  (0.2, "#e9dba0", "0,20"),
+                  (0.4, "#afd26b", "0,40"),
+                  (0.6, "#4d9d42", "0,60"),
+                  (1.0, "#155b35", "1,00")]
         ramp = QgsColorRampShader(-1, 1)
         ramp.setColorRampType(QgsColorRampShader.Type.Interpolated)
         ramp.setColorRampItemList([QgsColorRampShader.ColorRampItem(value,
             QColor(color), label) for value, color, label in colors])
         shader = QgsRasterShader(-1, 1)
         shader.setRasterShaderFunction(ramp)
-        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
-        renderer.setClassificationMin(-1.0)
-        renderer.setClassificationMax(1.0)
-        layer.setRenderer(renderer)
+        layer.setRenderer(QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader))
         layer.triggerRepaint()
 
     @staticmethod

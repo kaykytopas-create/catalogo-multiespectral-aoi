@@ -163,7 +163,7 @@ class EnvironmentalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             paths=save_report(report,folder)
             self.assertTrue(all(Path(p).exists() for p in paths.values()));self.assertIn("'=1+2",Path(paths['csv']).read_text('utf-8-sig'))
-            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.4');self.assertFalse(list(Path(folder).glob('*.part')))
+            data=json.loads(Path(paths['json']).read_text());self.assertEqual(data['version'],'3.5.3');self.assertFalse(list(Path(folder).glob('*.part')))
 
 try:
     from qgis.core import QgsApplication
