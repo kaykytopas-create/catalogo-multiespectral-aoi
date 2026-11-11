@@ -13,7 +13,7 @@ from qgis.PyQt.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRe
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog,
     QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMessageBox,
     QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
-    QFileDialog, QSlider, QLineEdit, QTabWidget)
+    QFileDialog, QSlider, QLineEdit, QTabWidget, QScrollArea)
 from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
                        QgsProject, QgsRasterLayer, QgsVectorLayer, QgsWkbTypes,
                        QgsMultiBandColorRenderer, QgsContrastEnhancement,
@@ -148,6 +148,8 @@ class PreviewDialog(QDialog):
         back = QPushButton("Voltar para escolher outra cena")
         back.clicked.connect(self.reject)
         use = QPushButton("Importar esta composição")
+        use.setMinimumHeight(44)
+        use.setMinimumWidth(240)
         use.clicked.connect(self.accept)
         row.addWidget(back); row.addStretch(); row.addWidget(use)
         layout.addLayout(row)
@@ -175,8 +177,13 @@ class CatalogDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("Catálogo Multiespectral 3.5.2 | Imagens · PRODES · Consulta ambiental e fundiária")
+        self.setWindowTitle("Catálogo Multiespectral 3.5.4 | Imagens · PRODES · Consulta ambiental e fundiária")
         self.resize(1180, 850)
+        screen = self.screen()
+        if screen:
+            available = screen.availableGeometry()
+            self.resize(min(1180, available.width() - 40),
+                        min(850, available.height() - 60))
         self.job, self.next_link, self.active_scene, self.search_params = None, None, None, None
         self.scenes = []
         self.archive = None
@@ -193,7 +200,13 @@ class CatalogDialog(QDialog):
         outer.addWidget(self.tabs)
         imagery_page = QWidget(self.tabs)
         self.tabs.addTab(imagery_page, "Imagens e investigação PRODES")
-        layout = QVBoxLayout(imagery_page)
+        page_layout = QVBoxLayout(imagery_page)
+        self.imagery_scroll = QScrollArea(imagery_page)
+        self.imagery_scroll.setWidgetResizable(True)
+        imagery_content = QWidget()
+        layout = QVBoxLayout(imagery_content)
+        self.imagery_scroll.setWidget(imagery_content)
+        page_layout.addWidget(self.imagery_scroll, 1)
         intro = QLabel("Selecione o imóvel. Fontes públicas: USGS via Microsoft Planetary Computer + INPE/Brazil Data Cube. Cenas com menos de 20% de nuvens; sem conta.")
         intro.setWordWrap(True); layout.addWidget(intro)
         prodes_button = QPushButton("2 · Abrir investigação PRODES — análise automática e relatório técnico")
@@ -269,6 +282,7 @@ class CatalogDialog(QDialog):
         row.addWidget(self.sync_button); row.addStretch()
         layout.addLayout(row)
         self.table = QTableWidget(0, 7)
+        self.table.setMinimumHeight(160)
         self.table.setHorizontalHeaderLabels(["Miniatura", "Ano", "Data", "Satélite", "Nuvens", "Cena", "Acervo local"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -319,16 +333,30 @@ class CatalogDialog(QDialog):
         self.repair = QCheckBox("Baixar novamente as bandas desta cena (recuperar acervo)")
         self.repair.setToolTip("Ignora as bandas em cache e baixa novos recortes. Requer internet; não preenche lacunas reais do sensor.")
         layout.addWidget(self.repair)
-        self.import_button = QPushButton("Ver prévia no mapa e importar RGB")
+        self.import_button = QPushButton("Prévia e importar RGB (Alt+I)")
+        self.import_button.setMinimumHeight(48)
+        self.import_button.setMinimumWidth(280)
+        self.import_button.setShortcut("Alt+I")
+        self.import_button.setAutoDefault(False)
+        self.import_button.setToolTip("Selecione uma cena e clique aqui ou pressione Alt+I para abrir a prévia e confirmar a importação.")
+        self.import_button.setStyleSheet(
+            "QPushButton {background:#1765a0;color:white;font-weight:bold;"
+            "padding:8px 16px;border:2px solid #1765a0;border-radius:5px;}"
+            "QPushButton:hover {background:#124f7e;}"
+            "QPushButton:pressed {background:#0d3b5f;}"
+            "QPushButton:focus {border:2px solid #ffbf47;}"
+            "QPushButton:disabled {background:#dce3e8;color:#52616c;border-color:#b8c4ce;}")
         self.import_button.setEnabled(False)
         self.ndvi_button = QPushButton("Calcular NDVI da cena")
         self.ndvi_button.setEnabled(False)
         self.cancel_button = QPushButton("Cancelar tarefa"); self.cancel_button.setEnabled(False)
-        row = QHBoxLayout(); row.addWidget(self.import_button)
+        self.ndvi_button.setMinimumHeight(44)
+        self.cancel_button.setMinimumHeight(44)
+        row = QHBoxLayout(); row.addWidget(self.import_button, 2)
         row.addWidget(self.ndvi_button); row.addWidget(self.cancel_button)
-        layout.addLayout(row)
+        page_layout.addLayout(row)
         self.info = QLabel("A prévia abre antes da importação. Bandas baixadas ficam no acervo para reutilização offline.")
-        self.info.setWordWrap(True); layout.addWidget(self.info)
+        self.info.setWordWrap(True); page_layout.addWidget(self.info)
         self.refresh.clicked.connect(self.refresh_layers)
         self.search.clicked.connect(self.search_first)
         self.choose_archive.clicked.connect(self.select_archive_folder)
@@ -342,8 +370,11 @@ class CatalogDialog(QDialog):
         self.year_changed()
         self.refresh_layers()
         from .environmental_ui import EnvironmentalTab
-        self.environmental_tab = EnvironmentalTab(self.iface, self.tabs)
-        self.tabs.addTab(self.environmental_tab, "Situação ambiental e fundiária")
+        self.environmental_scroll = QScrollArea(self.tabs)
+        self.environmental_scroll.setWidgetResizable(True)
+        self.environmental_tab = EnvironmentalTab(self.iface, self.environmental_scroll)
+        self.environmental_scroll.setWidget(self.environmental_tab)
+        self.tabs.addTab(self.environmental_scroll, "Situação ambiental e fundiária")
 
     def run_command(self):
         if self.job:return
@@ -461,7 +492,7 @@ class CatalogDialog(QDialog):
             layer.setCustomProperty('catalogo_multiespectral_qualidade',json.dumps(quality))
             layer.setCustomProperty('catalogo_multiespectral_fontes',json.dumps(item.get('catalog:sources',[])))
             if product=='rgb':self.configure_rgb(layer,False,item,record['bands'])
-            else:self.configure_ndvi(layer)
+            else:self.configure_ndvi(layer, product)
             for existing in list(project.mapLayers().values()):
                 if existing.customProperty('catalogo_multiespectral_assinatura','')==signature:project.removeMapLayer(existing.id())
             for key,value in [('assinatura',signature),('cena',record['scene_id']),('data',record['date']),('bandas',','.join(record['bands']))]:
@@ -633,7 +664,8 @@ class CatalogDialog(QDialog):
         is_index = product in ("ndvi", "nbr")
         for combo in self.rgb_boxes:
             combo.setEnabled(not is_index)
-        self.import_button.setText("Ver prévia no mapa e importar " + (product.upper() if is_index else "RGB"))
+        self.import_button.setText("Prévia e importar " + (product.upper() if is_index else "RGB") + " (Alt+I)")
+        self.import_button.setShortcut("Alt+I")
         self.update_import_button()
 
     def set_rgb(self, keys):
@@ -894,7 +926,7 @@ class CatalogDialog(QDialog):
             QMessageBox.warning(self, "Catálogo Multiespectral", "O QGIS não conseguiu abrir o raster {}.".format(label))
             return
         if self.active_product in ("ndvi", "nbr"):
-            self.configure_ndvi(layer)
+            self.configure_ndvi(layer, self.active_product)
         else:
             self.configure_rgb(layer, self.smooth_rgb.isChecked(), self.active_scene, self.active_bands)
         project = QgsProject.instance()
@@ -968,21 +1000,35 @@ class CatalogDialog(QDialog):
         self.info.setText("{} importado para {}. Arquivos preservados no acervo local.".format(label, acquired))
 
     @staticmethod
-    def configure_ndvi(layer):
-        colors = [(-1.0, "#312c51", "−1,00"),
-                  (-0.2, "#8d6e99", "−0,20"),
-                  (0.0, "#d7b8ac", "0,00"),
-                  (0.2, "#e9dba0", "0,20"),
-                  (0.4, "#afd26b", "0,40"),
-                  (0.6, "#4d9d42", "0,60"),
-                  (1.0, "#155b35", "1,00")]
+    def configure_ndvi(layer, product="ndvi"):
+        # Fixed NDVI scale: the same value has the same color in every scene.
+        # These stops are display values, not land-cover classification thresholds.
+        colors = [(-1.0, "#d73027", "−1,00"),
+                  (0.0, "#d73027", "0,00"),
+                  (0.2, "#fc8d59", "0,20"),
+                  (0.4, "#ffff00", "0,40"),
+                  (0.6, "#7fff00", "0,60"),
+                  (0.8, "#168000", "0,80"),
+                  (1.0, "#006400", "1,00")]
+        if product == "nbr":
+            # Preserve the existing NBR symbology; this release changes NDVI only.
+            colors = [(-1.0, "#312c51", "−1,00"),
+                      (-0.2, "#8d6e99", "−0,20"),
+                      (0.0, "#d7b8ac", "0,00"),
+                      (0.2, "#e9dba0", "0,20"),
+                      (0.4, "#afd26b", "0,40"),
+                      (0.6, "#4d9d42", "0,60"),
+                      (1.0, "#155b35", "1,00")]
         ramp = QgsColorRampShader(-1, 1)
         ramp.setColorRampType(QgsColorRampShader.Type.Interpolated)
         ramp.setColorRampItemList([QgsColorRampShader.ColorRampItem(value,
             QColor(color), label) for value, color, label in colors])
         shader = QgsRasterShader(-1, 1)
         shader.setRasterShaderFunction(ramp)
-        layer.setRenderer(QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader))
+        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
+        renderer.setClassificationMin(-1.0)
+        renderer.setClassificationMax(1.0)
+        layer.setRenderer(renderer)
         layer.triggerRepaint()
 
     @staticmethod

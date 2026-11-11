@@ -18,10 +18,10 @@ class ExecutionReportTests(unittest.TestCase):
         self.assertNotIn('A busca automática consultou', result)
 
     def test_landscape_map_has_explicit_proportional_height(self):
-        with tempfile.NamedTemporaryFile(suffix='.png') as image:
-            image.write(b'\x89PNG\r\n\x1a\n' + b'\0'*8 + struct.pack('>II', 2104, 1487))
-            image.flush()
-            tag = module.image_tag(image.name)
+        with tempfile.TemporaryDirectory() as directory:
+            image = pathlib.Path(directory) / 'map.png'
+            image.write_bytes(b'\x89PNG\r\n\x1a\n' + b'\0'*8 + struct.pack('>II', 2104, 1487))
+            tag = module.image_tag(str(image))
             self.assertIn('width="640" height="452"', tag)
 
     def test_primary_button_routes_to_history_not_manual_selectors(self):

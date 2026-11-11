@@ -1,3 +1,16 @@
+## Atualização 3.5.4 — simbologia do NDVI
+
+- Escala contínua fixa: vermelho, laranja, amarelo, verde claro e verde escuro.
+- Valores altos de NDVI aparecem em verde escuro; a escala vai de −1 a +1 em todas as cenas.
+- Aplicada na prévia, importação manual e importação por comandos, inclusive a produtos do acervo reabertos pelo plugin.
+- Cálculo, bandas, resolução e valores dos arquivos NDVI preservados. As cores não constituem classificação automática de pastagem, floresta ou desmatamento.
+- Camadas já existentes no projeto mantêm seu estilo salvo. Reimporte o NDVI pelo plugin para usar a nova escala.
+- Mantidas as melhorias da versão instalada 3.5.3: controles roláveis e botão de importação no rodapé.
+
+## Atualização 3.5.3
+
+Botão de prévia/importação maior, destacado e sempre visível no rodapé da aba de imagens. Atalho Alt+I, controles com rolagem e tamanho inicial adaptado à tela. A confirmação da prévia permanece antes da importação.
+
 # Correção 3.5.2 — apontamentos Flake8
 
 Corrigidos os seis itens de qualidade apresentados pelo verificador de publicação: quatro E731 (funções de formatação), um F811 (importação duplicada) e um E741 (nome de variável ambíguo). Também removidas importações sem uso. Nenhuma regra foi ocultada por comentário de supressão ou configuração do verificador. Leia [VALIDACAO_3.5.2.md](VALIDACAO_3.5.2.md).
